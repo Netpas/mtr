@@ -81,7 +81,7 @@ static ares_channel channel;
 static char syncstr[20];
 static items_t items_a;
 static sem_t sem;
-static volatile sig_atomic_t sigstat = 0;
+static volatile int sigstat = 0;
 /* items width: ASN, Route, Country, Registry, Allocated */
 static const int iiwidth[] = { 7, 19, 4, 8, 11 };       /* item len + space */
 
@@ -144,6 +144,7 @@ static void query_callback (
     char *retstr = NULL;
     char *unknown_txt = NULL;
     ENTRY item;
+    ENTRY *found_item;
 
     if (ARES_SUCCESS != ares_parse_txt_reply(abuf, aslen, &txt_out)) {
         ares_free_data(txt_out);
@@ -159,10 +160,11 @@ static void query_callback (
     strncpy(syncstr, retstr, sizeof(syncstr)-1);
 
     if (retstr && iihash) {
-        if ((item.key = xstrdup(parm->key))) {
-            item.data = (void *) items_tmp;
-            hsearch(item, ENTER);
-            DEB_syslog(LOG_INFO, "Insert into hash: %s", parm->key);
+        item.key = parm->key;
+        if ((found_item = hsearch(item, FIND))) {
+        	if (found_item->data == NULL) {
+        		found_item->data = (void *) items_tmp;
+        	}
         }
     } else if (iihash) {
         free(items_tmp);
@@ -287,6 +289,10 @@ static char *get_ipinfo(
         DEB_syslog(LOG_INFO, ">> Search: %s", key);
         item.key = key;
         if ((found_item = hsearch(item, FIND))) {
+            if (found_item->data == NULL) {
+                return NULL;
+            }
+
             if (!(val = (*((items_t *) found_item->data))[ctl->ipinfo_no]))
                 val = (*((items_t *) found_item->data))[0];
             DEB_syslog(LOG_INFO, "Found (hashed): %s", val);
@@ -300,6 +306,14 @@ static char *get_ipinfo(
         }
         parm->ctl = ctl;
         strncpy(parm->key, key, sizeof(parm->key)-1);
+
+        if ((item.key = xstrdup(key))) {
+            item.data = NULL;
+            hsearch(item, ENTER);
+        } else {
+            return NULL;
+        }
+
         ipinfo_lookup(ctl, lookup_key, parm);
         if (!loopmode) {
             return syncstr;
