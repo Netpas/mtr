@@ -132,16 +132,13 @@ static void __attribute__ ((__noreturn__)) usage(FILE * out)
          out);
     fputs(" -i, --interval SECONDS     ICMP echo request interval\n", out);
     fputs
-        (" -G, --gracetime SECONDS    number of seconds to wait for responses\n",
-         out);
-    fputs
         (" -Q, --tos NUMBER           type of service field in IP header\n",
          out);
     fputs
         (" -e, --mpls                 display information from ICMP extensions\n",
          out);
     fputs
-        (" -Z, --timeout SECONDS      seconds to keep probe sockets open\n",
+        (" -Z, --timeout SECONDS      seconds to wait for a probe response\n",
          out);
 #ifdef SO_MARK
     fputs(" -M, --mark MARK            mark each sent packet\n", out);
@@ -380,7 +377,6 @@ static void parse_arg(
         {"port", 1, NULL, 'P'}, /* target port number for TCP/SCTP/UDP */
         {"localport", 1, NULL, 'L'},    /* source port number for UDP */
         {"timeout", 1, NULL, 'Z'},      /* timeout for probe sockets */
-        {"gracetime", 1, NULL, 'G'},    /* gracetime for replies after last probe */
 #ifdef SO_MARK
         {"mark", 1, NULL, 'M'}, /* use SO_MARK */
 #endif
@@ -541,12 +537,6 @@ static void parse_arg(
             if (ctl->bitpattern > 255)
                 ctl->bitpattern = -1;
             break;
-        case 'G':
-            ctl->GraceTime = strtofloat_or_err(optarg, "invalid argument");
-            if (ctl->GraceTime <= 0.0) {
-                error(EXIT_FAILURE, 0, "wait time must be positive");
-            }
-            break;
         case 'Q':
             ctl->tos =
                 strtonum_or_err(optarg, "invalid argument", STRTO_INT);
@@ -607,6 +597,7 @@ static void parse_arg(
         case 'Z':
             ctl->probe_timeout =
                 strtonum_or_err(optarg, "invalid argument", STRTO_INT);
+            ctl->GraceTime = ctl->probe_timeout;
             ctl->probe_timeout *= 1000000;
             break;
         case '4':
@@ -772,7 +763,6 @@ int main(
     ctl.Interactive = 1;
     ctl.MaxPing = 10;
     ctl.WaitTime = 1.0;
-    ctl.GraceTime = 5.0;
     ctl.dns = 1;
     ctl.use_dns = 1;
     ctl.cpacketsize = 64;
@@ -782,6 +772,7 @@ int main(
     ctl.maxTTL = 30;
     ctl.maxUnknown = 12;
     ctl.probe_timeout = 10 * 1000000;
+    ctl.GraceTime = ctl.probe_timeout / 1000000.0;
     ctl.ipinfo_no = -1;
     ctl.ipinfo_max = -1;
     xstrncpy(ctl.fld_active, "LS NABWV", 2 * MAXFLD);
