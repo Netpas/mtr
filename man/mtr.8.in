@@ -342,9 +342,7 @@ Example (columns to the right not shown for clarity):
 .fi
 .TP
 .B \-i \fISECONDS\fR, \fB\-\-interval \fISECONDS
-Use this option to specify the positive number of seconds between ICMP
-ECHO requests.  The default value for this parameter is one second.  The
-root user may choose values between zero and one.
+Use this option to specify the positive number of seconds of one probe cycle. (That is, the interval between each ICMP ECHO request is SECONDS/numhosts.) The default value for this parameter is one second.  The root user may choose values between zero and one.
 .TP
 .B \-c \fICOUNT\fR, \fB\-\-report\-cycles \fICOUNT
 Use this option to set the number of pings sent to determine
