@@ -18,6 +18,7 @@
 
 #include "config.h"
 
+#include <syslog.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -307,11 +308,13 @@ static char *get_ipinfo(
         parm->ctl = ctl;
         strncpy(parm->key, key, sizeof(parm->key)-1);
 
-        if ((item.key = xstrdup(key))) {
-            item.data = NULL;
-            hsearch(item, ENTER);
-        } else {
-            return NULL;
+        if (iihash) {
+            if ((item.key = xstrdup(key))) {
+                item.data = NULL;
+                hsearch(item, ENTER);
+            } else {
+                return NULL;
+            }
         }
 
         ipinfo_lookup(ctl, lookup_key, parm);
