@@ -53,6 +53,30 @@ mtr \- a network diagnostic tool
 .BI \-y \ IPINFO\c
 ]
 [\c
+.B \-\-ipinfo\-asn\c
+]
+[\c
+.B \-\-ipinfo\-ip\-prefix\c
+]
+[\c
+.B \-\-ipinfo\-country\c
+]
+[\c
+.B \-\-ipinfo\-register\c
+]
+[\c
+.B \-\-ipinfo\-date\c
+]
+[\c
+.B \-\-ipinfo\-city\c
+]
+[\c
+.B \-\-ipinfo\-carrier\c
+]
+[\c
+.B \-\-ipinfo\-geo\c
+]
+[\c
 .B \-\-aslookup\c
 ]
 [\c
@@ -312,8 +336,10 @@ I%Interarrival Jitter
 Example:
 -o "LSD NBAW  X"
 .TP
-.B \-y \fIn\fR, \fB\-\-ipinfo \fIn
-Displays information about each IP hop.  Valid values for \fIn\fR are:
+.B \-y \fIm\fR[,\fIn\fR,\.\.\.], \fB\-\-ipinfo \fIm\fR[,\fIn\fR,\.\.\.]
+Displays information about each IP hop. Example: mtr -y 0,1,5 xx.com
+.br
+Valid values for \fIn\fR are:
 .TS
 tab(%);
 ll.
@@ -322,10 +348,58 @@ ll.
 2%Display country code of the origin AS
 3%Display RIR (ripencc, arin, ...)
 4%Display the allocation date of the IP prefix
+5%Display the city
+6%Display the carrier
+7%Display the Latitude and longitude information
 .TE
 .br
 
 It is possible to cycle between these fields at runtime (using the \fBy\fR key).
+.TP
+.B -\-ipinfo\-asn
+equivalent to --ipinfo 0.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.br
+Example: mtr -t --ipinfo-asn --ipinfo-date -y 3,5 xx.com
+.TP
+.B -\-ipinfo\-ip\-prefix
+equivalent to --ipinfo 1.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-country
+equivalent to --ipinfo 2.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-register
+equivalent to --ipinfo 3.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-date
+equivalent to --ipinfo 4.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-city
+equivalent to --ipinfo 5.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-carrier
+equivalent to --ipinfo 6.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-geo
+equivalent to --ipinfo 7.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-dns \fIDOMAIN_NAME
+Specify special DOMAIN_NAME to query the DNS data. The default value for this parameter is origin6.asn.cymru.com .
 .TP
 .B \-z\fR, \fB\-\-aslookup
 Displays the Autonomous System (AS) number alongside each hop.  Equivalent to \fB\-\-ipinfo 0\fR.

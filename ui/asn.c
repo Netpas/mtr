@@ -18,7 +18,6 @@
 
 #include "config.h"
 
-#include <syslog.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +66,7 @@
 #define ITEMSEP '|'
 #define NAMELEN 127
 #define UNKN    "???"
+#define EMPTY   "--"
 #define SEMPATH "sem"
 
 typedef char *items_t[ITEMSMAX + 1];
@@ -76,15 +76,19 @@ struct comparm {
 };
 
 static int iihash = 0;
-static int loopmode = 0;    // mark DisplayCurses and DisplayGTK
 static pthread_t tid;
 static ares_channel channel;
 static char syncstr[20];
 static items_t items_a;
 static sem_t sem;
 static volatile int sigstat = 0;
-/* items width: ASN, Route, Country, Registry, Allocated */
-static const int iiwidth[] = { 7, 19, 4, 8, 11 };       /* item len + space */
+/* items width: ASN, Route, Country, Registry, Allocated, City, Carrier, Geo */
+static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 15};   /* item len + space */
+
+#ifdef ENABLE_IPV6
+char ipinfo_domain6[128] = "origin6.asn.cymru.com";
+#endif
+char ipinfo_domain[128] = "origin.asn.cymru.com";
 
 
 static char *split_txtrec(
@@ -123,8 +127,7 @@ static char *split_txtrec(
         (*items)[j] = NULL;
 
     *p_items = items;
-    if (i > ctl->ipinfo_max)
-        ctl->ipinfo_max = i;
+
     if (ctl->ipinfo_no >= i) {
         return (*items)[0];
     } else {
@@ -194,7 +197,7 @@ void *wait_loop(
         FD_ZERO(&writers);
         nfds = ares_fds(channel, &readers, &writers);
         if (nfds == 0) {
-            if (!loopmode) {
+            if (!iihash) {
                 break;
             } else {
                 sem_wait(&sem);
@@ -214,7 +217,7 @@ static void ipinfo_lookup(
     const char *domain,
     struct comparm *parm)
 {
-    if (!loopmode) {
+    if (!iihash) {
         if(ares_init(&channel) != ARES_SUCCESS) {
             error(0, 0, "ares_init failed");
             free(parm);
@@ -224,11 +227,11 @@ static void ipinfo_lookup(
     }
 
     ares_query(channel, domain, C_IN, T_TXT, query_callback, parm);
-    if (loopmode == 1) {
+    if (iihash) {
         sem_post(&sem);
     }
 
-    if (!loopmode) {
+    if (!iihash) {
         wait_loop(channel);
     }
 }
@@ -250,6 +253,40 @@ static void reverse_host6(
 }
 #endif
 
+static int is_private_ip(ip_t *addr)
+{
+	int prefix_arr[6] = {8, 17, 16, 12, 16, 16};
+	unsigned int ipaddr = htonl((*(struct in_addr *)addr).s_addr);
+	unsigned int special_ip_scope[6];
+	unsigned int mask_ip_scope[6];
+	int i;
+
+	special_ip_scope[0] = 167772160L;	// 10.0.0.0/8
+	special_ip_scope[1] = 174063616L;	// 10.96.0.0/17
+	special_ip_scope[2] = 176095232L;	// 10.127.0.0/16
+	special_ip_scope[3] = 2886729728L;	// 172.16.0.0/12
+	special_ip_scope[4] = 3232235520L;	// 192.168.0.0/16
+	special_ip_scope[5] = 1681915904L;	// 100.64.0.0/16
+	for (i = 0; i < 6; i++) {
+		mask_ip_scope[i] = 0xffffffff;
+		mask_ip_scope[i] <<= (32 - prefix_arr[i]);
+		mask_ip_scope[i] &= 0xffffffff;
+	}
+
+	for (i = 3; i < 6; i++) {
+		if ((ipaddr & mask_ip_scope[i]) == special_ip_scope[i])
+			return 1;
+	}
+
+	if ((ipaddr & mask_ip_scope[0]) == special_ip_scope[0]) {
+		if (!((ipaddr & mask_ip_scope[1]) == special_ip_scope[1]) &&
+		    !((ipaddr & mask_ip_scope[2]) == special_ip_scope[2]))
+		    return 1;
+	}
+
+	return 0;
+}
+
 static char *get_ipinfo(
     struct mtr_ctl *ctl,
     ip_t * addr)
@@ -263,10 +300,14 @@ static char *get_ipinfo(
     if (!addr)
         return NULL;
 
+    if ((ctl->af == AF_INET) && is_private_ip(addr)) {
+        return NULL;
+    }
+
     if (ctl->af == AF_INET6) {
 #ifdef ENABLE_IPV6
         reverse_host6(addr, key, NAMELEN);
-        if (snprintf(lookup_key, NAMELEN, "%s.origin6.asn.cymru.com", key)
+        if (snprintf(lookup_key, NAMELEN, "%s.%s", key, ipinfo_domain6)
             >= NAMELEN)
             return NULL;
 #else
@@ -279,7 +320,7 @@ static char *get_ipinfo(
             (key, NAMELEN, "%d.%d.%d.%d", buff[3], buff[2], buff[1],
              buff[0]) >= NAMELEN)
             return NULL;
-        if (snprintf(lookup_key, NAMELEN, "%s.origin.asn.cymru.com", key)
+        if (snprintf(lookup_key, NAMELEN, "%s.%s", key, ipinfo_domain)
             >= NAMELEN)
             return NULL;
     }
@@ -294,8 +335,10 @@ static char *get_ipinfo(
                 return NULL;
             }
 
-            if (!(val = (*((items_t *) found_item->data))[ctl->ipinfo_no]))
-                val = (*((items_t *) found_item->data))[0];
+            if (!(val = (*((items_t *) found_item->data))[ctl->ipinfo_no])) {
+                val = UNKN;
+                //val = (*((items_t *) found_item->data))[0];
+            }
             DEB_syslog(LOG_INFO, "Found (hashed): %s", val);
         }
     }
@@ -318,7 +361,7 @@ static char *get_ipinfo(
         }
 
         ipinfo_lookup(ctl, lookup_key, parm);
-        if (!loopmode) {
+        if (!iihash) {
             return syncstr;
         }
     }
@@ -342,6 +385,24 @@ ATTRIBUTE_CONST int get_iiwidth(
     return iiwidth[ipinfo_no % len];
 }
 
+int get_allinuse_iiwidth(
+    struct mtr_ctl *ctl)
+{
+    int i;
+    int width = 0;
+
+    for (i = 0; i < IPINFO_NUMS; i++) {
+        if (IS_INDEX_IPINFO(ctl->ipinfo_arr, i)) {
+            width += get_iiwidth(i);
+            if (i == ASN) {
+                width += 2; /* align header: AS */
+            }
+        }
+    }
+
+    return width;
+}
+
 char *fmt_ipinfo(
     struct mtr_ctl *ctl,
     ip_t * addr)
@@ -353,7 +414,12 @@ char *fmt_ipinfo(
     ipinfo = get_ipinfo(ctl, addr);
     snprintf(fmt, sizeof(fmt), "%s%%-%ds", ctl->ipinfo_no ? "" : "AS",
              get_iiwidth(ctl->ipinfo_no));
-    snprintf(fmtinfo, sizeof(fmtinfo), fmt, ipinfo ? ipinfo : UNKN);
+
+    if (ipinfo && (strlen(ipinfo) == 0)) {
+        snprintf(fmtinfo, sizeof(fmtinfo), fmt, EMPTY);
+    } else {
+        snprintf(fmtinfo, sizeof(fmtinfo), fmt, ipinfo ? ipinfo : UNKN);
+    }
 
     return fmtinfo;
 }
@@ -361,62 +427,91 @@ char *fmt_ipinfo(
 int is_printii(
     struct mtr_ctl *ctl)
 {
-    return (ctl->ipinfo_no >= 0);
+    return ((ctl->ipinfo_no >= 0) &&
+            (ctl->ipinfo_no < ctl->ipinfo_max));
+}
+
+char *ipinfo_get_content(
+    struct mtr_ctl *ctl,
+    ip_t * addr,
+    int ipinfo_index)
+{
+    char *content;
+
+    ctl->ipinfo_no = ipinfo_index;
+    content = fmt_ipinfo(ctl, addr);
+
+    if (strlen(content) == 0)
+        content = EMPTY;
+
+    return content;
+}
+
+int get_ipinfo_compose(
+    struct mtr_ctl *ctl, // [in] param
+    ip_t *addr,          // [in] param
+    char *buf,           // [in|output] param
+    int buflen)          // [in] param
+{
+	int i, j, hd_len;
+	unsigned char key;
+
+    memset(buf, 0, buflen);
+	for (i = 0, hd_len = 0; i < MAXFLD; i++) {
+		j = ctl->fld_index[ctl->fld_active[i]];
+		key = data_fields[j].key;
+
+		if (!is_ipinfo_filed(key))
+		    break;
+		snprintf(buf + hd_len, buflen - hd_len,
+		        data_fields[j].format,
+		        data_fields[j].ipinfo_xxx(ctl, addr, ipinfo_key2no(key)));
+
+		hd_len += (data_fields[j].length);
+	}
+	buf[hd_len] = 0;
+
+    return i;
 }
 
 void asn_open(
     struct mtr_ctl *ctl)
 {
-    #ifdef HAVE_CURSES
-    if (ctl->DisplayMode == DisplayCurses) {
-        loopmode = 1;
+    DEB_syslog(LOG_INFO, "hcreate(%d)", IIHASH_HI);
+    if (!(iihash = hcreate(IIHASH_HI)))
+        error(0, errno, "ipinfo hash");
+
+    if(ares_init(&channel) != ARES_SUCCESS) {
+        error(0, 0, "ares_init failed");
+        return;
     }
-    #endif
-    #ifdef HAVE_GTK
-    if (ctl->DisplayMode == DisplayGTK) {
-        loopmode = 1;
+
+    if (sem_open(SEMPATH, O_CREAT|O_RDWR, 0666, 0) == SEM_FAILED) {
+        error(0, 0, "sem_open failed");
+        return ;
     }
-    #endif
 
-    if (ctl->ipinfo_no >= 0) {
-        DEB_syslog(LOG_INFO, "hcreate(%d)", IIHASH_HI);
-        if (!(iihash = hcreate(IIHASH_HI)))
-            error(0, errno, "ipinfo hash");
-
-        if(ares_init(&channel) != ARES_SUCCESS) {
-            error(0, 0, "ares_init failed");
-            return;
-        }
-
-        if (sem_open(SEMPATH, O_CREAT|O_RDWR, 0666, 0) == SEM_FAILED) {
-            error(0, 0, "sem_open failed");
-            return ;
-        }
-
-        if (pthread_create(&tid, NULL, wait_loop, channel)) {
-            error(0, 0, "pthread_create failed");
-            tid = pthread_self();
-        }
-        pthread_detach(tid);
+    if (pthread_create(&tid, NULL, wait_loop, channel)) {
+        error(0, 0, "pthread_create failed");
+        tid = pthread_self();
     }
+    pthread_detach(tid);
 }
 
 void asn_close(
     struct mtr_ctl *ctl)
 {
-    if ((ctl->ipinfo_no >= 0) && iihash) {
+    if (iihash) {
         DEB_syslog(LOG_INFO, "hdestroy()");
         hdestroy();
         iihash = 0;
     }
 
-    if (ctl->ipinfo_no >= 0) {
-        ares_destroy(channel);
-        if (pthread_equal(tid, pthread_self()) == 0) {
-            sigstat = 1;
-            sem_post(&sem);
-        }
-        sem_close(&sem);
-        sem_unlink(SEMPATH);
+    ares_destroy(channel);
+    if (pthread_equal(tid, pthread_self()) == 0) {
+        sigstat = 1;
+        sem_post(&sem);
     }
+    sem_close(&sem);
+    sem_unlink(SEMPATH);
 }
