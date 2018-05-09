@@ -743,9 +743,6 @@ static void parse_arg(
             break;
         case OPT_DNS:
             if (optarg) {
-                #ifdef ENABLE_IPV6
-                strncpy(ipinfo_domain6, optarg, sizeof(ipinfo_domain6) - 1);
-                #endif
                 strncpy(ipinfo_domain, optarg, sizeof(ipinfo_domain) - 1);
             }
             break;

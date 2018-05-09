@@ -84,6 +84,10 @@ static sem_t sem;
 static volatile int sigstat = 0;
 /* items width: ASN, Route, Country, Registry, Allocated, City, Carrier, Geo */
 static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 15};   /* item len + space */
+/* used for checking private ip */
+static int prefix_arr[6] = {8, 17, 16, 12, 16, 16};
+static unsigned int mask_ip_scope[6];
+static unsigned int special_ip_scope[6];
 
 #ifdef ENABLE_IPV6
 char ipinfo_domain6[128] = "origin6.asn.cymru.com";
@@ -253,15 +257,11 @@ static void reverse_host6(
 }
 #endif
 
-static int is_private_ip(ip_t *addr)
+static void init_private_ip(void)
 {
-	int prefix_arr[6] = {8, 17, 16, 12, 16, 16};
-	unsigned int ipaddr = htonl((*(struct in_addr *)addr).s_addr);
-	unsigned int special_ip_scope[6];
-	unsigned int mask_ip_scope[6];
-	int i;
+    int i;
 
-	special_ip_scope[0] = 167772160L;	// 10.0.0.0/8
+    special_ip_scope[0] = 167772160L;	// 10.0.0.0/8
 	special_ip_scope[1] = 174063616L;	// 10.96.0.0/17
 	special_ip_scope[2] = 176095232L;	// 10.127.0.0/16
 	special_ip_scope[3] = 2886729728L;	// 172.16.0.0/12
@@ -272,12 +272,22 @@ static int is_private_ip(ip_t *addr)
 		mask_ip_scope[i] <<= (32 - prefix_arr[i]);
 		mask_ip_scope[i] &= 0xffffffff;
 	}
+}
 
+static int is_private_ip(ip_t *addr)
+{
+	int i;
+	unsigned int ipaddr;
+
+    if (!iihash) {
+        init_private_ip();
+    }
+
+    ipaddr = htonl((*(struct in_addr *)addr).s_addr);
 	for (i = 3; i < 6; i++) {
 		if ((ipaddr & mask_ip_scope[i]) == special_ip_scope[i])
 			return 1;
 	}
-
 	if ((ipaddr & mask_ip_scope[0]) == special_ip_scope[0]) {
 		if (!((ipaddr & mask_ip_scope[1]) == special_ip_scope[1]) &&
 		    !((ipaddr & mask_ip_scope[2]) == special_ip_scope[2]))
@@ -337,7 +347,6 @@ static char *get_ipinfo(
 
             if (!(val = (*((items_t *) found_item->data))[ctl->ipinfo_no])) {
                 val = UNKN;
-                //val = (*((items_t *) found_item->data))[0];
             }
             DEB_syslog(LOG_INFO, "Found (hashed): %s", val);
         }
@@ -481,6 +490,8 @@ void asn_open(
     if (!(iihash = hcreate(IIHASH_HI)))
         error(0, errno, "ipinfo hash");
 
+    init_private_ip();
+
     if(ares_init(&channel) != ARES_SUCCESS) {
         error(0, 0, "ares_init failed");
         return;
@@ -488,7 +499,7 @@ void asn_open(
 
     if (sem_open(SEMPATH, O_CREAT|O_RDWR, 0666, 0) == SEM_FAILED) {
         error(0, 0, "sem_open failed");
-        return ;
+        return;
     }
 
     if (pthread_create(&tid, NULL, wait_loop, channel)) {
