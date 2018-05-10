@@ -4,7 +4,7 @@
     Changes/additions Copyright (C) 1998 R.E.Wolff@BitWizard.nl
 
     This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License version 2 as 
+    it under the terms of the GNU General Public License version 2 as
     published by the Free Software Foundation.
 
     This program is distributed in the hope that it will be useful,
@@ -94,7 +94,7 @@ int gtk_detect(
 {
     if (getenv("DISPLAY") != NULL) {
         /* If we do this here, gtk_init exits on an error. This happens
-           BEFORE the user has had a chance to tell us not to use the 
+           BEFORE the user has had a chance to tell us not to use the
            display... */
         return TRUE;
     } else {
@@ -530,9 +530,12 @@ static void update_tree_row(
                        COL_STDEV, (float) (net_stdev(row) / 1000.0),
                        COL_COLOR, net_up(row) ? NULL : "red", -1);
 #ifdef HAVE_IPINFO
-    if (is_printii(ctl))
-        gtk_list_store_set(ReportStore, iter, COL_ASN,
-                           fmt_ipinfo(ctl, addr), -1);
+    char buf[1024];
+
+    if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+        get_ipinfo_compose(ctl, addr, buf, sizeof(buf));
+        gtk_list_store_set(ReportStore, iter, COL_ASN, buf, -1);
+    }
 #endif
 }
 

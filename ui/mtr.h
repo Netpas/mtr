@@ -4,7 +4,7 @@
     Copyright (C) 2005 R.E.Wolff@BitWizard.nl
 
     This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License version 2 as 
+    it under the terms of the GNU General Public License version 2 as
     published by the Free Software Foundation.
 
     This program is distributed in the hope that it will be useful,
@@ -56,7 +56,7 @@ typedef int time_t;
 #endif
 
 /* stuff used by display such as report, curses... */
-#define MAXFLD 20               /* max stats fields to display */
+#define MAXFLD 25               /* max stats fields to display */
 #define FLD_INDEX_SZ 256
 
 /* net related definitions */
@@ -86,6 +86,7 @@ struct mtr_ctl {
     char *InterfaceName;
     char *InterfaceAddress;
     char LocalHostname[128];
+    unsigned char ipinfo_arr;
     int ipinfo_no;
     int ipinfo_max;
     int cpacketsize;            /* packet size used by ping */
@@ -123,9 +124,8 @@ struct fields {
     const char *title;
     const char *format;
     const int length;
-    int (
-    *net_xxx) (
-    int);
+    int (*net_xxx) (int);
+    char *(*ipinfo_xxx) (struct mtr_ctl *, ip_t *, int);
 };
 /* defined in mtr.c */
 extern const struct fields data_fields[MAXFLD];
@@ -145,5 +145,9 @@ struct mplslen {
 #else
 #define running_as_root() (getuid() == 0)
 #endif
+
+extern int is_ipinfo_filed(unsigned char key);
+extern int ipinfo_key2no(unsigned char key);
+extern unsigned char ipinfo_no2key(int no);
 
 #endif                          /* MTR_MTR_H */
