@@ -45,6 +45,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <math.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 
@@ -74,28 +75,82 @@ char *myname;
 
 const struct fields data_fields[MAXFLD] = {
     /* key, Remark, Header, Format, Width, CallBackFunc */
-    {' ', "<sp>: Space between fields", " ", " ", 1, &net_drop},
-    {'L', "L: Loss Ratio", "Loss%", " %4.1f%%", 6, &net_loss},
-    {'D', "D: Dropped Packets", "Drop", " %4d", 5, &net_drop},
-    {'R', "R: Received Packets", "Rcv", " %5d", 6, &net_returned},
-    {'S', "S: Sent Packets", "Snt", " %5d", 6, &net_xmit},
-    {'N', "N: Newest RTT(ms)", "Last", " %5.1f", 6, &net_last},
-    {'B', "B: Min/Best RTT(ms)", "Best", " %5.1f", 6, &net_best},
-    {'A', "A: Average RTT(ms)", "Avg", " %5.1f", 6, &net_avg},
-    {'W', "W: Max/Worst RTT(ms)", "Wrst", " %5.1f", 6, &net_worst},
-    {'V', "V: Standard Deviation", "StDev", " %5.1f", 6, &net_stdev},
-    {'G', "G: Geometric Mean", "Gmean", " %5.1f", 6, &net_gmean},
-    {'J', "J: Current Jitter", "Jttr", " %4.1f", 5, &net_jitter},
-    {'M', "M: Jitter Mean/Avg.", "Javg", " %4.1f", 5, &net_javg},
-    {'X', "X: Worst Jitter", "Jmax", " %4.1f", 5, &net_jworst},
-    {'I', "I: Interarrival Jitter", "Jint", " %4.1f", 5, &net_jinta},
-    {'\0', NULL, NULL, NULL, 0, NULL}
+    {' ', "<sp>: Space between fields", " ", " ", 1, &net_drop, NULL},
+    {'L', "L: Loss Ratio", "Loss%", " %4.1f%%", 6, &net_loss, NULL},
+    {'D', "D: Dropped Packets", "Drop", " %4d", 5, &net_drop, NULL},
+    {'R', "R: Received Packets", "Rcv", " %5d", 6, &net_returned, NULL},
+    {'S', "S: Sent Packets", "Snt", " %5d", 6, &net_xmit, NULL},
+    {'N', "N: Newest RTT(ms)", "Last", " %5.1f", 6, &net_last, NULL},
+    {'B', "B: Min/Best RTT(ms)", "Best", " %5.1f", 6, &net_best, NULL},
+    {'A', "A: Average RTT(ms)", "Avg", " %5.1f", 6, &net_avg, NULL},
+    {'W', "W: Max/Worst RTT(ms)", "Wrst", " %5.1f", 6, &net_worst, NULL},
+    {'V', "V: Standard Deviation", "StDev", " %5.1f", 6, &net_stdev, NULL},
+    {'G', "G: Geometric Mean", "Gmean", " %5.1f", 6, &net_gmean, NULL},
+    {'J', "J: Current Jitter", "Jttr", " %4.1f", 5, &net_jitter, NULL},
+    {'M', "M: Jitter Mean/Avg.", "Javg", " %4.1f", 5, &net_javg, NULL},
+    {'X', "X: Worst Jitter", "Jmax", " %4.1f", 5, &net_jworst, NULL},
+    {'I', "I: Interarrival Jitter", "Jint", " %4.1f", 5, &net_jinta, NULL},
+    {'Z', "Z: ASN Number", "ASN", "%-9s", 9, NULL, &ipinfo_get_content},
+    {'P', "P: IP Prefix", "IP-PRFX", "%-18s", 18, NULL, &ipinfo_get_content},
+    {'C', "C: Country Code", "CTRY", "%-6s", 6, NULL, &ipinfo_get_content},
+    {'E', "E: Registry", "REG", "%-7s", 7, NULL, &ipinfo_get_content},
+    {'Y', "Y: Allocation Date", "DATE", "%-13s", 13, NULL, &ipinfo_get_content},
+    {'T', "T: City", "CTY", "%-8s", 8, NULL, &ipinfo_get_content},
+    {'K', "K: Carrier", "CRIR", "%-10s", 10, NULL, &ipinfo_get_content},
+    {'O', "O: Geo", "GEO", "%-25s", 25, NULL, &ipinfo_get_content},
+    {'\0', NULL, NULL, NULL, 0, NULL, NULL}
 };
 
 typedef struct names {
     char *name;
     struct names *next;
 } names_t;
+
+unsigned char ipinfo_no2key(int no)
+{
+    unsigned char key = 0;
+
+    switch (no) {
+        case ASN:           key = 'Z'; break;
+        case IP_PREFIX:     key = 'P'; break;
+        case COUNTRY_CODE:  key = 'C'; break;
+        case REG:           key = 'E'; break;
+        case ALLOC_DATE:    key = 'Y'; break;
+        case CITY:          key = 'T'; break;
+        case CARRIER:       key = 'K'; break;
+        case GEO:           key = 'O'; break;
+    }
+
+    return key;
+}
+
+int is_ipinfo_filed(unsigned char key)
+{
+    if ((key == 'Z') || (key == 'P') || (key == 'C') || (key == 'E') ||
+        (key == 'Y') || (key == 'T') || (key == 'K') || (key == 'O')) {
+        return 1;
+    }
+    return 0;
+}
+
+int ipinfo_key2no(unsigned char key)
+{
+    int val = -1;
+
+    switch (key) {
+        case 'Z': val = ASN; break;
+        case 'P': val = IP_PREFIX; break;
+        case 'C': val = COUNTRY_CODE; break;
+        case 'E': val = REG; break;
+        case 'Y': val = ALLOC_DATE; break;
+        case 'T': val = CITY; break;
+        case 'K': val = CARRIER; break;
+        case 'O': val = GEO; break;
+        default:  break;
+    }
+
+    return val;
+}
 
 static void __attribute__ ((__noreturn__)) usage(FILE * out)
 {
@@ -167,8 +222,17 @@ static void __attribute__ ((__noreturn__)) usage(FILE * out)
           out);
     fputs(" -o, --order FIELDS         select output fields\n", out);
 #ifdef HAVE_IPINFO
-    fputs(" -y, --ipinfo NUMBER        select IP information in output\n",
+    fputs(" -y, --ipinfo NUMBER,……     select IP information in output\n",
           out);
+    fputs(" --ipinfo-asn               display AS number\n", out);
+    fputs(" --ipinfo-ip-prefix         display IP prefix\n", out);
+    fputs(" --ipinfo-country           display country code\n", out);
+    fputs(" --ipinfo-register          display register\n", out);
+    fputs(" --ipinfo-date              display allocation date\n", out);
+    fputs(" --ipinfo-city              display city\n", out);
+    fputs(" --ipinfo-carrier           display carrier\n", out);
+    fputs(" --ipinfo-geo               display geo\n", out);
+    fputs(" --ipinfo-dns DOMAIN_NAME   Specify DOMAIN_NAME to query DNS data\n", out);
     fputs(" -z, --aslookup             display AS number\n", out);
 #endif
     fputs(" -h, --help                 display this help and exit\n", out);
@@ -305,6 +369,26 @@ static void init_fld_options(
     ctl->available_options[i] = 0;
 }
 
+static void process_ipinfo_arr(struct mtr_ctl *ctl, char *optarg)
+{
+	char *t;
+	int index;
+
+	if (optarg == NULL)
+		return;
+
+	t = strtok(optarg, ",");
+	while (t != NULL) {
+		index = strtonum_or_err(t, "invalid argument", STRTO_INT);
+        if (index < 0 || index >= IPINFO_NUMS) {
+            error(EXIT_FAILURE, 0, "value %d out of range (0 - %d)",
+                    index, IPINFO_NUMS - 1);
+        }
+
+        ctl->ipinfo_arr |= (1 << index);
+		t = strtok(NULL, ",");
+	}
+}
 
 static void parse_arg(
     struct mtr_ctl *ctl,
@@ -313,7 +397,7 @@ static void parse_arg(
     char **argv)
 {
     int opt;
-    int i;
+    int i, j;
     /* IMPORTANT: when adding or modifying an option:
        0/ try to find a somewhat logical order;
        1/ add the long option name in "long_options" below;
@@ -321,7 +405,16 @@ static void parse_arg(
        3/ update the help message (see usage() function).
      */
     enum {
-        OPT_DISPLAYMODE = CHAR_MAX + 1
+        OPT_DISPLAYMODE = CHAR_MAX + 1,
+        OPT_ASN,
+        OPT_IP_PREFIX,
+        OPT_COUNTRY,
+        OPT_REGISTER,
+        OPT_ALLOCATION_DATE,
+        OPT_CITY,
+        OPT_CARRIER,
+        OPT_GEO,
+        OPT_DNS
     };
     static const struct option long_options[] = {
         /* option name, has argument, NULL, short name */
@@ -356,6 +449,15 @@ static void parse_arg(
 #ifdef HAVE_IPINFO
         {"ipinfo", 1, NULL, 'y'},       /* IP info lookup */
         {"aslookup", 0, NULL, 'z'},     /* Do AS lookup (--ipinfo 0) */
+        {"ipinfo-asn", 0, NULL, OPT_ASN},
+        {"ipinfo-ip-prefix", 0, NULL, OPT_IP_PREFIX},
+        {"ipinfo-country", 0, NULL, OPT_COUNTRY},
+        {"ipinfo-register", 0, NULL, OPT_REGISTER},
+        {"ipinfo-date", 0, NULL, OPT_ALLOCATION_DATE},
+        {"ipinfo-city", 0, NULL, OPT_CITY},
+        {"ipinfo-carrier", 0, NULL, OPT_CARRIER},
+        {"ipinfo-geo", 0, NULL, OPT_GEO},
+        {"ipinfo-dns", 1, NULL, OPT_DNS},
 #endif
 
         {"interval", 1, NULL, 'i'},
@@ -384,6 +486,7 @@ static void parse_arg(
     };
     enum { num_options = sizeof(long_options) / sizeof(struct option) };
     char short_options[num_options * 2];
+    char fld_tmp[2 * MAXFLD] = {0};
     size_t n, p;
 
     for (n = p = 0; n < num_options; n++) {
@@ -523,13 +626,19 @@ static void parse_arg(
             if (strlen(optarg) > MAXFLD) {
                 error(EXIT_FAILURE, 0, "Too many fields: %s", optarg);
             }
-            for (i = 0; optarg[i]; i++) {
+            for (i = 0, j = 0; optarg[i]; i++) {
+                if (is_ipinfo_filed(optarg[i])) {
+                    ctl->ipinfo_arr |= (1 << ipinfo_key2no(optarg[i]));
+                    continue;
+                }
+                fld_tmp[j++] = optarg[i];
+
                 if (!strchr(ctl->available_options, optarg[i])) {
                     error(EXIT_FAILURE, 0, "Unknown field identifier: %c",
                           optarg[i]);
                 }
             }
-            xstrncpy(ctl->fld_active, optarg, 2 * MAXFLD);
+            xstrncpy(ctl->fld_active, fld_tmp, 2 * MAXFLD);
             break;
         case 'B':
             ctl->bitpattern =
@@ -610,15 +719,39 @@ static void parse_arg(
 #endif
 #ifdef HAVE_IPINFO
         case 'y':
-            ctl->ipinfo_no =
-                strtonum_or_err(optarg, "invalid argument", STRTO_INT);
-            if (ctl->ipinfo_no < 0 || 4 < ctl->ipinfo_no) {
-                error(EXIT_FAILURE, 0, "value %d out of range (0 - 4)",
-                      ctl->ipinfo_no);
-            }
+            process_ipinfo_arr(ctl, optarg);
             break;
         case 'z':
-            ctl->ipinfo_no = 0;
+            ctl->ipinfo_arr = (1 << ASN);
+            break;
+        case OPT_ASN:
+            ctl->ipinfo_arr |= (1 << ASN);
+            break;
+        case OPT_IP_PREFIX:
+            ctl->ipinfo_arr |= (1 << IP_PREFIX);
+            break;
+        case OPT_COUNTRY:
+            ctl->ipinfo_arr |= (1 << COUNTRY_CODE);
+            break;
+        case OPT_REGISTER:
+            ctl->ipinfo_arr |= (1 << REG);
+            break;
+        case OPT_ALLOCATION_DATE:
+            ctl->ipinfo_arr |= (1 << ALLOC_DATE);
+            break;
+        case OPT_CARRIER:
+            ctl->ipinfo_arr |= (1 << CARRIER);
+            break;
+        case OPT_GEO:
+            ctl->ipinfo_arr |= (1 << GEO);
+            break;
+        case OPT_CITY:
+            ctl->ipinfo_arr |= (1 << CITY);
+            break;
+        case OPT_DNS:
+            if (optarg) {
+                strncpy(ipinfo_domain, optarg, sizeof(ipinfo_domain) - 1);
+            }
             break;
 #endif
 #ifdef SO_MARK
@@ -641,7 +774,6 @@ static void parse_arg(
 
     if (optind > argc - 1)
         return;
-
 }
 
 
@@ -667,6 +799,7 @@ static void parse_mtr_options(
     }
 
     parse_arg(ctl, names, argc, argv);
+
     free(argv[0]);
     optind = 0;
 }
@@ -753,6 +886,7 @@ int main(
     struct hostent *host = NULL;
     struct hostent trhost;
     char *alptr[2];
+    char ipinfo_fld[2 * MAXFLD] = {0};
     names_t *names_head = NULL;
     names_t *names_walk;
 
@@ -773,8 +907,9 @@ int main(
     ctl.maxUnknown = 12;
     ctl.probe_timeout = 10 * 1000000;
     ctl.GraceTime = ctl.probe_timeout / 1000000.0;
+    ctl.ipinfo_arr = 0;
     ctl.ipinfo_no = -1;
-    ctl.ipinfo_max = -1;
+    ctl.ipinfo_max = IPINFO_NUMS;
     xstrncpy(ctl.fld_active, "LS NABWV", 2 * MAXFLD);
 
     /*
@@ -802,6 +937,26 @@ int main(
     parse_mtr_options(&ctl, &names_head, getenv("MTR_OPTIONS"));
 
     parse_arg(&ctl, &names_head, argc, argv);
+
+    if (!IS_CLEAR_IPINFO(ctl.ipinfo_arr)) {
+        ctl.ipinfo_no = (int)log2(ctl.ipinfo_arr & (0 - ctl.ipinfo_arr));
+    }
+    for (int i = 0, j = 0; i < IPINFO_NUMS; i++) {
+        if (IS_INDEX_IPINFO(ctl.ipinfo_arr, i)) {
+            switch (i) {
+                case ASN:          ipinfo_fld[j++] = 'Z'; break;
+                case IP_PREFIX:    ipinfo_fld[j++] = 'P'; break;
+                case COUNTRY_CODE: ipinfo_fld[j++] = 'C'; break;
+                case REG:          ipinfo_fld[j++] = 'E'; break;
+                case ALLOC_DATE:   ipinfo_fld[j++] = 'Y'; break;
+                case CITY:         ipinfo_fld[j++] = 'T'; break;
+                case CARRIER:      ipinfo_fld[j++] = 'K'; break;
+                case GEO:          ipinfo_fld[j++] = 'O'; break;
+            }
+        }
+    }
+    strcat(ipinfo_fld, ctl.fld_active);
+    strcpy(ctl.fld_active, ipinfo_fld);
 
     while (optind < argc) {
         char *name = argv[optind++];

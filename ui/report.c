@@ -96,6 +96,8 @@ void report_close(
     const size_t iiwidth_len = get_iiwidth_len();
 #endif
 
+    // print heads ----
+
     if (ctl->reportwide) {
         /* get the longest hostname */
         len_hosts = strlen(ctl->LocalHostname);
@@ -111,13 +113,11 @@ void report_close(
     }
 #ifdef HAVE_IPINFO
     len_tmp = len_hosts;
-    if (ctl->ipinfo_no >= 0 && iiwidth_len) {
-        ctl->ipinfo_no %= iiwidth_len;
+    if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr) && iiwidth_len) {
         if (ctl->reportwide) {
             len_hosts++;        /* space */
-            len_tmp += get_iiwidth(ctl->ipinfo_no);
-            if (!ctl->ipinfo_no)
-                len_tmp += 2;   /* align header: AS */
+
+            len_tmp += get_allinuse_iiwidth(ctl);
         }
     }
     snprintf(fmt, sizeof(fmt), "HOST: %%-%ds", len_tmp);
@@ -128,7 +128,7 @@ void report_close(
     len = ctl->reportwide ? strlen(buf) : len_hosts;
     for (i = 0; i < MAXFLD; i++) {
         j = ctl->fld_index[ctl->fld_active[i]];
-        if (j < 0)
+        if (j < 0 || is_ipinfo_filed(data_fields[j].key))
             continue;
 
         snprintf(fmt, sizeof(fmt), "%%%ds", data_fields[j].length);
@@ -136,6 +136,8 @@ void report_close(
         len += data_fields[j].length;
     }
     printf("%s\n", buf);
+
+    // print contents
 
     max = net_max(ctl);
     at = net_min(ctl);
@@ -146,9 +148,13 @@ void report_close(
 
 #ifdef HAVE_IPINFO
         if (is_printii(ctl)) {
-            snprintf(fmt, sizeof(fmt), " %%2d. %%s%%-%zus", len_hosts);
-            snprintf(buf, sizeof(buf), fmt, at + 1, fmt_ipinfo(ctl, addr),
-                     name);
+            snprintf(buf, sizeof(buf), " %2d. ", at + 1);
+            for (i = 0; i < IPINFO_NUMS; i++) {
+                if (IS_INDEX_IPINFO(ctl->ipinfo_arr, i))
+                    snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), "%s", ipinfo_get_content(ctl, addr, i));
+            }
+            snprintf(fmt, sizeof(fmt), "%%-%zus", len_hosts);
+            snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), fmt, name);
         } else {
 #endif
             snprintf(fmt, sizeof(fmt), " %%2d.|-- %%-%zus", len_hosts);
@@ -156,10 +162,11 @@ void report_close(
 #ifdef HAVE_IPINFO
         }
 #endif
+
         len = ctl->reportwide ? strlen(buf) : len_hosts;
         for (i = 0; i < MAXFLD; i++) {
             j = ctl->fld_index[ctl->fld_active[i]];
-            if (j < 0)
+            if (j < 0 || is_ipinfo_filed(data_fields[j].key))
                 continue;
 
             /* 1000.0 is a temporay hack for stats usec to ms, impacted net_loss. */
@@ -201,7 +208,7 @@ void report_close(
                     if (mpls->labels && z == 1 && ctl->enablempls)
                         print_mpls(mpls);
                     snprint_addr(ctl, name, sizeof(name), addr2);
-                    printf("     %s%s\n", fmt_ipinfo(ctl, addr2), name);
+                    printf("     %s\n", name);
                     if (ctl->enablempls)
                         print_mpls(mplss);
                 }
