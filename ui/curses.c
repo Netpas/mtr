@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 /* MacOSX may need this before socket.h...*/
 #if defined(HAVE_SYS_TYPES_H)
@@ -128,9 +129,12 @@ int mtr_curses_keyaction(
     struct mtr_ctl *ctl)
 {
     int c = getch();
-    int i = 0;
+    int i = 0, j, k;
+    int offset;
     float f = 0.0;
     char buf[MAXFLD + 1];
+    char fld_tmp[2 * MAXFLD] = {0};
+    char fld_ipinfo[2 * MAXFLD] = {0};
 
     if (c == 'Q') {             /* must be checked before c = tolower(c) */
         mvprintw(2, 0, "Type of Service(tos): %d\n", ctl->tos);
@@ -280,8 +284,10 @@ int mtr_curses_keyaction(
         return ActionNone;
         /* fields to display & their ordering */
     case 'o':
-        mvprintw(2, 0, "Fields: %s\n\n", ctl->fld_active);
+        //mvprintw(2, 0, "Fields: %s\n\n", ctl->fld_active);
+        mvprintw(2, 0, "Fields: \n\n");
 
+        printw("  WARN: The field order of IPINFO will be automatically adjusted in the front and in order\n\n");
         for (i = 0; i < MAXFLD; i++) {
             if (data_fields[i].descr != NULL)
                 printw("  %s\n", data_fields[i].descr);
@@ -303,17 +309,36 @@ int mtr_curses_keyaction(
             }
         }
         buf[i] = '\0';
-        if (strlen(buf) > 0)
-            xstrncpy(ctl->fld_active, buf, 2 * MAXFLD);
+
+        ctl->ipinfo_arr = 0;
+        ctl->ipinfo_no = -1;
+        for (i = 0, j = 0, k = 0; buf[i]; i++) {
+            if (is_ipinfo_filed(buf[i])) {
+                ctl->ipinfo_arr |= (1 << ipinfo_key2no(buf[i]));
+                fld_ipinfo[k++] = buf[i];
+                continue;
+            }
+            fld_tmp[j++] = buf[i];
+        }
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+            ctl->ipinfo_no = (int)log2(ctl->ipinfo_arr & (0 - ctl->ipinfo_arr));
+        }
+        strcat(fld_ipinfo, fld_tmp);
+        if (strlen(fld_ipinfo) > 0)
+            xstrncpy(ctl->fld_active, fld_ipinfo, 2 * MAXFLD);
 
         return ActionNone;
     case 'j':
+        for (offset = 0; offset < sizeof(ctl->fld_active); offset++) {
+            if (!is_ipinfo_filed(ctl->fld_active[offset]))
+                break;
+        }
         if (strchr(ctl->fld_active, 'N'))
             /* GeoMean and jitter */
-            xstrncpy(ctl->fld_active, "DR AGJMXI", 2 * MAXFLD);
+            xstrncpy(ctl->fld_active + offset, "DR AGJMXI", 2 * MAXFLD);
         else
             /* default */
-            xstrncpy(ctl->fld_active, "LS NABWV", 2 * MAXFLD);
+            xstrncpy(ctl->fld_active + offset, "LS NABWV", 2 * MAXFLD);
         return ActionNone;
     case 'u':
         switch (ctl->mtrtype) {

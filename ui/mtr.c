@@ -93,11 +93,11 @@ const struct fields data_fields[MAXFLD] = {
     {'Z', "Z: ASN Number", "ASN", "%-9s", 9, NULL, &ipinfo_get_content},
     {'P', "P: IP Prefix", "IP-PRFX", "%-18s", 18, NULL, &ipinfo_get_content},
     {'C', "C: Country Code", "CTRY", "%-6s", 6, NULL, &ipinfo_get_content},
-    {'E', "E: Register", "REG", "%-7s", 7, NULL, &ipinfo_get_content},
+    {'E', "E: Registry", "REG", "%-7s", 7, NULL, &ipinfo_get_content},
     {'Y', "Y: Allocation Date", "DATE", "%-13s", 13, NULL, &ipinfo_get_content},
     {'T', "T: City", "CTY", "%-8s", 8, NULL, &ipinfo_get_content},
     {'K', "K: Carrier", "CRIR", "%-10s", 10, NULL, &ipinfo_get_content},
-    {'O', "O: Geo", "GEO", "%-15s", 15, NULL, &ipinfo_get_content},
+    {'O', "O: Geo", "GEO", "%-25s", 25, NULL, &ipinfo_get_content},
     {'\0', NULL, NULL, NULL, 0, NULL, NULL}
 };
 
@@ -397,7 +397,7 @@ static void parse_arg(
     char **argv)
 {
     int opt;
-    int i;
+    int i, j;
     /* IMPORTANT: when adding or modifying an option:
        0/ try to find a somewhat logical order;
        1/ add the long option name in "long_options" below;
@@ -486,6 +486,7 @@ static void parse_arg(
     };
     enum { num_options = sizeof(long_options) / sizeof(struct option) };
     char short_options[num_options * 2];
+    char fld_tmp[2 * MAXFLD] = {0};
     size_t n, p;
 
     for (n = p = 0; n < num_options; n++) {
@@ -625,13 +626,19 @@ static void parse_arg(
             if (strlen(optarg) > MAXFLD) {
                 error(EXIT_FAILURE, 0, "Too many fields: %s", optarg);
             }
-            for (i = 0; optarg[i]; i++) {
+            for (i = 0, j = 0; optarg[i]; i++) {
+                if (is_ipinfo_filed(optarg[i])) {
+                    ctl->ipinfo_arr |= (1 << ipinfo_key2no(optarg[i]));
+                    continue;
+                }
+                fld_tmp[j++] = optarg[i];
+
                 if (!strchr(ctl->available_options, optarg[i])) {
                     error(EXIT_FAILURE, 0, "Unknown field identifier: %c",
                           optarg[i]);
                 }
             }
-            xstrncpy(ctl->fld_active, optarg, 2 * MAXFLD);
+            xstrncpy(ctl->fld_active, fld_tmp, 2 * MAXFLD);
             break;
         case 'B':
             ctl->bitpattern =

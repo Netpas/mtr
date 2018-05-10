@@ -312,6 +312,9 @@ wide report (-w) mode to see the IPs in report mode.
 Use this option to specify which fields to display and in which order.
 You may use one or more space characters to separate fields.
 .br
+The field order of IPINFO will be automatically adjusted in the front and in order.
+(IPINFO fileds in order: ZPCEYTKO)
+.br
 Available fields:
 .TS
 center allbox tab(%);
@@ -330,6 +333,14 @@ J%Current Jitter
 M%Jitter Mean/Avg.
 X%Worst Jitter
 I%Interarrival Jitter
+Z%ASN Number
+P%IP Prefix
+C%Country Code
+E%Registry
+Y%Allocation Date
+T%City
+K%Carrier
+O%Geo
 .TE
 .br
 
