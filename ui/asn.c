@@ -61,13 +61,14 @@
 #define DEB_syslog(...) do {} while (0)
 #endif
 
-#define IIHASH_HI   128
-#define ITEMSMAX    15
-#define ITEMSEP '|'
-#define NAMELEN 127
-#define UNKN    "???"
-#define EMPTY   "--"
-#define SEMPATH "sem"
+#define IIHASH_HI       128
+#define ITEMSMAX        15
+#define ITEMSEP         '|'
+#define NAMELEN         127
+#define UNKN            "???"
+#define EMPTY           "--"
+#define SEMPATH         "sem"
+#define NETPAS_DOMAIN  "ip.xelerate.ai"
 
 typedef char *items_t[ITEMSMAX + 1];
 struct comparm {
@@ -85,9 +86,13 @@ static volatile int sigstat = 0;
 /* items width: ASN, Route, Country, Registry, Allocated, City, Carrier, Geo */
 static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 15};   /* item len + space */
 /* used for checking private ip */
-static int prefix_arr[6] = {8, 17, 16, 12, 16, 16};
-static unsigned int mask_ip_scope[6];
-static unsigned int special_ip_scope[6];
+static int prefix_arr[4] = {8, 12, 16, 16};
+static unsigned int mask_ip_scope[4];
+static unsigned int private_ip_scope[4];
+/* used for checking netpas specified open ip */
+static int netpas_prefix_arr[2] = {17, 16};
+static unsigned int netpas_open_ip_scope[2];
+static unsigned int netpas_mask_ip_scope[2];
 
 #ifdef ENABLE_IPV6
 char ipinfo_domain6[128] = "origin6.asn.cymru.com";
@@ -258,17 +263,34 @@ static void init_private_ip(void)
 {
     int i;
 
-    special_ip_scope[0] = 167772160L;	// 10.0.0.0/8
-	special_ip_scope[1] = 174063616L;	// 10.96.0.0/17
-	special_ip_scope[2] = 176095232L;	// 10.127.0.0/16
-	special_ip_scope[3] = 2886729728L;	// 172.16.0.0/12
-	special_ip_scope[4] = 3232235520L;	// 192.168.0.0/16
-	special_ip_scope[5] = 1681915904L;	// 100.64.0.0/16
-	for (i = 0; i < 6; i++) {
+    // general private ip address
+    private_ip_scope[0] = 167772160L;	// 10.0.0.0/8
+	private_ip_scope[1] = 2886729728L;	// 172.16.0.0/12
+	private_ip_scope[2] = 3232235520L;	// 192.168.0.0/16
+	private_ip_scope[3] = 1681915904L;	// 100.64.0.0/16
+	for (i = 0; i < 4; i++) {
 		mask_ip_scope[i] = 0xffffffff;
 		mask_ip_scope[i] <<= (32 - prefix_arr[i]);
 		mask_ip_scope[i] &= 0xffffffff;
 	}
+
+    // netpas specified open ip address
+	netpas_open_ip_scope[0] = 174063616L;	// 10.96.0.0/17
+    netpas_open_ip_scope[1] = 176095232L;	// 10.127.0.0/16
+    for (i = 0; i < 2; i++) {
+        netpas_mask_ip_scope[i] = 0xffffffff;
+        netpas_mask_ip_scope[i] <<= (32 - netpas_prefix_arr[i]);
+        netpas_mask_ip_scope[i] &= 0xffffffff;
+    }
+}
+
+static int is_netpas_openseg(unsigned int ipaddr)
+{
+    if (((ipaddr & netpas_mask_ip_scope[0]) == netpas_open_ip_scope[0]) ||
+        ((ipaddr & netpas_mask_ip_scope[1]) == netpas_open_ip_scope[1]))
+        return 1;
+
+    return 0;
 }
 
 static int is_private_ip(ip_t *addr)
@@ -281,13 +303,14 @@ static int is_private_ip(ip_t *addr)
     }
 
     ipaddr = htonl((*(struct in_addr *)addr).s_addr);
-	for (i = 3; i < 6; i++) {
-		if ((ipaddr & mask_ip_scope[i]) == special_ip_scope[i])
+
+	for (i = 1; i < 4; i++) {
+		if ((ipaddr & mask_ip_scope[i]) == private_ip_scope[i])
 			return 1;
 	}
-	if ((ipaddr & mask_ip_scope[0]) == special_ip_scope[0]) {
-		if (!((ipaddr & mask_ip_scope[1]) == special_ip_scope[1]) &&
-		    !((ipaddr & mask_ip_scope[2]) == special_ip_scope[2]))
+	if ((ipaddr & mask_ip_scope[0]) == private_ip_scope[0]) {
+		if ((strcmp(ipinfo_domain, NETPAS_DOMAIN) != 0) ||
+            !is_netpas_openseg(ipaddr))
 		    return 1;
 	}
 
@@ -328,9 +351,16 @@ static char *get_ipinfo(
             (key, NAMELEN, "%d.%d.%d.%d", buff[3], buff[2], buff[1],
              buff[0]) >= NAMELEN)
             return NULL;
-        if (snprintf(lookup_key, NAMELEN, "%d.mtr.%s.%s", hops, key, ipinfo_domain)
-            >= NAMELEN)
-            return NULL;
+        if (strcmp(ipinfo_domain, NETPAS_DOMAIN) == 0) {
+            if (snprintf(lookup_key, NAMELEN, "%d.mtr.%s.%s", hops, key,
+                    ipinfo_domain) >= NAMELEN)
+                return NULL;
+        } else {
+            if (snprintf(lookup_key, NAMELEN, "%s.%s", key, ipinfo_domain)
+                     >= NAMELEN)
+                return NULL;
+        }
+
     }
 
     if (iihash) {
