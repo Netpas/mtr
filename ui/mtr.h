@@ -125,7 +125,7 @@ struct fields {
     const char *format;
     const int length;
     int (*net_xxx) (int);
-    char *(*ipinfo_xxx) (struct mtr_ctl *, ip_t *, int);
+    char *(*ipinfo_xxx) (struct mtr_ctl *, ip_t *, int, int);
 };
 /* defined in mtr.c */
 extern const struct fields data_fields[MAXFLD];

@@ -157,87 +157,94 @@ static void __attribute__ ((__noreturn__)) usage(FILE * out)
     fputs("\nUsage:\n", out);
     fputs(" mtr [options] hostname\n", out);
     fputs("\n", out);
-    fputs(" -F, --filename FILE        read hostname(s) from a file\n",
+    fputs(" -F, --filename FILE            read hostname(s) from a file\n",
           out);
-    fputs(" -4                         use IPv4 only\n", out);
+    fputs(" -4                             use IPv4 only\n", out);
 #ifdef ENABLE_IPV6
-    fputs(" -6                         use IPv6 only\n", out);
+    fputs(" -6                             use IPv6 only\n", out);
 #endif
-    fputs(" -u, --udp                  use UDP instead of ICMP echo\n",
+    fputs(" -u, --udp                      use UDP instead of ICMP echo\n",
           out);
-    fputs(" -T, --tcp                  use TCP instead of ICMP echo\n",
+    fputs(" -T, --tcp                      use TCP instead of ICMP echo\n",
           out);
-    fputs(" -I, --interface NAME       use named network interface\n",
+    fputs(" -I, --interface NAME           use named network interface\n",
          out);
     fputs
-        (" -a, --address ADDRESS      bind the outgoing socket to ADDRESS\n",
+        (" -a, --address ADDRESS          bind the outgoing socket to ADDRESS\n",
          out);
-    fputs(" -f, --first-ttl NUMBER     set what TTL to start\n", out);
-    fputs(" -m, --max-ttl NUMBER       maximum number of hops\n", out);
-    fputs(" -U, --max-unknown NUMBER   maximum unknown host\n", out);
+    fputs(" -f, --first-ttl NUMBER         set what TTL to start\n", out);
+    fputs(" -m, --max-ttl NUMBER           maximum number of hops\n", out);
+    fputs(" -U, --max-unknown NUMBER       maximum unknown host\n", out);
     fputs
-        (" -P, --port PORT            target port number for TCP, SCTP, or UDP\n",
+        (" -P, --port PORT                target port number for TCP, SCTP, or UDP\n",
          out);
-    fputs(" -L, --localport LOCALPORT  source port number for UDP\n", out);
+    fputs(" -L, --localport LOCALPORT      source port number for UDP\n", out);
     fputs
-        (" -s, --psize PACKETSIZE     set the packet size used for probing\n",
-         out);
-    fputs
-        (" -B, --bitpattern NUMBER    set bit pattern to use in payload\n",
-         out);
-    fputs(" -i, --interval SECONDS     ICMP echo request interval\n", out);
-    fputs
-        (" -Q, --tos NUMBER           type of service field in IP header\n",
+        (" -s, --psize PACKETSIZE         set the packet size used for probing\n",
          out);
     fputs
-        (" -e, --mpls                 display information from ICMP extensions\n",
+        (" -B, --bitpattern NUMBER        set bit pattern to use in payload\n",
+         out);
+    fputs(" -i, --interval SECONDS         ICMP echo request interval\n", out);
+    fputs
+        (" -Q, --tos NUMBER               type of service field in IP header\n",
          out);
     fputs
-        (" -Z, --timeout SECONDS      seconds to wait for a probe response\n",
+        (" -e, --mpls                     display information from ICMP extensions\n",
+         out);
+    fputs
+        (" -Z, --timeout SECONDS          seconds to wait for a probe response\n",
          out);
 #ifdef SO_MARK
-    fputs(" -M, --mark MARK            mark each sent packet\n", out);
+    fputs(" -M, --mark MARK                mark each sent packet\n", out);
 #endif
-    fputs(" -r, --report               output using report mode\n", out);
-    fputs(" -w, --report-wide          output wide report\n", out);
-    fputs(" -c, --report-cycles COUNT  set the number of pings sent\n",
+    fputs(" -r, --report                   output using report mode\n", out);
+    fputs(" -w, --report-wide              output wide report\n", out);
+    fputs(" -c, --report-cycles COUNT      set the number of pings sent\n",
           out);
-    fputs(" -j, --json                 output json\n", out);
-    fputs(" -x, --xml                  output xml\n", out);
-    fputs(" -C, --csv                  output comma separated values\n",
+    fputs(" -j, --json                     output json\n", out);
+    fputs(" -x, --xml                      output xml\n", out);
+    fputs(" -C, --csv                      output comma separated values\n",
           out);
-    fputs(" -l, --raw                  output raw format\n", out);
-    fputs(" -p, --split                split output\n", out);
+    fputs(" -l, --raw                      output raw format\n", out);
+    fputs(" -p, --split                    split output\n", out);
 #ifdef HAVE_CURSES
-    fputs(" -t, --curses               use curses terminal interface\n",
+    fputs(" -t, --curses                   use curses terminal interface\n",
           out);
 #endif
-    fputs("     --displaymode MODE     select initial display mode\n",
+    fputs("     --displaymode MODE         select initial display mode\n",
           out);
 #ifdef HAVE_GTK
-    fputs(" -g, --gtk                  use GTK+ xwindow interface\n", out);
+    fputs(" -g, --gtk                      use GTK+ xwindow interface\n", out);
 #endif
-    fputs(" -n, --no-dns               do not resolve host names\n", out);
-    fputs(" -b, --show-ips             show IP numbers and host names\n",
+    fputs(" -n, --no-dns                   do not resolve host names\n", out);
+    fputs(" -b, --show-ips                 show IP numbers and host names\n",
           out);
-    fputs(" -o, --order FIELDS         select output fields\n", out);
+    fputs(" -o, --order FIELDS             select output fields\n", out);
 #ifdef HAVE_IPINFO
-    fputs(" -y, --ipinfo NUMBER,……     select IP information in output\n",
-          out);
-    fputs(" --ipinfo-asn               display AS number\n", out);
-    fputs(" --ipinfo-ip-prefix         display IP prefix\n", out);
-    fputs(" --ipinfo-country           display country code\n", out);
-    fputs(" --ipinfo-register          display register\n", out);
-    fputs(" --ipinfo-date              display allocation date\n", out);
-    fputs(" --ipinfo-city              display city\n", out);
-    fputs(" --ipinfo-carrier           display carrier\n", out);
-    fputs(" --ipinfo-geo               display geo\n", out);
-    fputs(" --ipinfo-dns DOMAIN_NAME   Specify DOMAIN_NAME to query DNS data\n", out);
-    fputs(" -z, --aslookup             display AS number\n", out);
+    fputs(" -y, --ipinfo NUMBER,……         select IP information(NUMBER:0~7) in output\n", out);
+    fputs("                                <NUMBER 0: AS number>\n", out);
+    fputs("                                <NUMBER 1: IP prefix>\n", out);
+    fputs("                                <NUMBER 2: country code>\n", out);
+    fputs("                                <NUMBER 3: registry>\n", out);
+    fputs("                                <NUMBER 4: allocation date>\n", out);
+    fputs("                                <NUMBER 5: city>\n", out);
+    fputs("                                <NUMBER 6: carrier>\n", out);
+    fputs("                                <NUMBER 7: geo>\n", out);
+    fputs("     --ipinfo-asn               display AS number, equal to -y 0\n", out);
+    fputs("     --ipinfo-ip-prefix         display IP prefix, equal to -y 1\n", out);
+    fputs("     --ipinfo-country           display country code, equal to -y 2\n", out);
+    fputs("     --ipinfo-register          display registry, equal to -y 3\n", out);
+    fputs("     --ipinfo-date              display allocation date, equal to -y 4\n", out);
+    fputs("     --ipinfo-city              display city, equal to -y 5\n", out);
+    fputs("     --ipinfo-carrier           display carrier, equal to -y 6\n", out);
+    fputs("     --ipinfo-geo               display geo, equal to -y 7\n", out);
+    fputs("     --ipinfo-dns DOMAIN_NAME   Specify DOMAIN_NAME to query DNS data\n", out);
+    fputs(" -z, --aslookup                 display AS number\n", out);
 #endif
-    fputs(" -h, --help                 display this help and exit\n", out);
+    fputs(" -h, --help                     display this help and exit\n", out);
     fputs
-        (" -v, --version              output version information and exit\n",
+        (" -v, --version                  output version information and exit\n",
          out);
     fputs("\n", out);
     fputs("See the 'man 8 mtr' for details.\n", out);
@@ -626,6 +633,8 @@ static void parse_arg(
             if (strlen(optarg) > MAXFLD) {
                 error(EXIT_FAILURE, 0, "Too many fields: %s", optarg);
             }
+            /* Filter out the ipinfo fields, which will be regenerated after
+               this function and added to the front of ctl->fld_active.*/
             for (i = 0, j = 0; optarg[i]; i++) {
                 if (is_ipinfo_filed(optarg[i])) {
                     ctl->ipinfo_arr |= (1 << ipinfo_key2no(optarg[i]));
@@ -722,7 +731,7 @@ static void parse_arg(
             process_ipinfo_arr(ctl, optarg);
             break;
         case 'z':
-            ctl->ipinfo_arr = (1 << ASN);
+            ctl->ipinfo_arr |= (1 << ASN);
             break;
         case OPT_ASN:
             ctl->ipinfo_arr |= (1 << ASN);
@@ -941,6 +950,7 @@ int main(
     if (!IS_CLEAR_IPINFO(ctl.ipinfo_arr)) {
         ctl.ipinfo_no = (int)log2(ctl.ipinfo_arr & (0 - ctl.ipinfo_arr));
     }
+    // use ctl.ipinfo_arr to fill up ctl.fld_active
     for (int i = 0, j = 0; i < IPINFO_NUMS; i++) {
         if (IS_INDEX_IPINFO(ctl.ipinfo_arr, i)) {
             switch (i) {

@@ -478,7 +478,7 @@ Specifies the maximum number of hops (max time-to-live value) traceroute will
 probe.  Default is 30.
 .TP
 .B \-U \fINUM\fR, \fB\-\-max-unknown \fINUM
-Specifies the maximum unknown host. Default is 5.
+Specifies the maximum unknown host. Default is 12.
 .TP
 .B \-u\fR, \fB\-\-udp
 Use UDP datagrams instead of ICMP ECHO.

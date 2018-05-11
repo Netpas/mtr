@@ -102,7 +102,7 @@ static char *split_txtrec(
 {
     char *prev;
     char *next;
-    int i = 0, j;
+    int i = 0;
     items_t *items = &items_a;
 
     if (!txt_rec)
@@ -127,16 +127,12 @@ static char *split_txtrec(
 
     if (i < ITEMSMAX)
         i++;
-    for (j = i; j <= ITEMSMAX; j++)
-        (*items)[j] = NULL;
+    for (; i <= ITEMSMAX; i++)
+        (*items)[i] = NULL;
 
     *p_items = items;
 
-    if (ctl->ipinfo_no >= i) {
-        return (*items)[0];
-    } else {
-        return (*items)[ctl->ipinfo_no];
-    }
+    return (*items)[ctl->ipinfo_no] ? (*items)[ctl->ipinfo_no] : UNKN;
 }
 
 static void query_callback (
@@ -165,7 +161,8 @@ static void query_callback (
     } else {
         retstr = split_txtrec(parm->ctl, txt_out->txt, &items_tmp);
     }
-    strncpy(syncstr, retstr, sizeof(syncstr)-1);
+    if (retstr != NULL)
+        strncpy(syncstr, retstr, sizeof(syncstr)-1);
 
     if (retstr && iihash) {
         item.key = parm->key;
@@ -299,7 +296,8 @@ static int is_private_ip(ip_t *addr)
 
 static char *get_ipinfo(
     struct mtr_ctl *ctl,
-    ip_t * addr)
+    ip_t * addr,
+    int hops)
 {
     char key[NAMELEN];
     char lookup_key[NAMELEN];
@@ -330,7 +328,7 @@ static char *get_ipinfo(
             (key, NAMELEN, "%d.%d.%d.%d", buff[3], buff[2], buff[1],
              buff[0]) >= NAMELEN)
             return NULL;
-        if (snprintf(lookup_key, NAMELEN, "%s.%s", key, ipinfo_domain)
+        if (snprintf(lookup_key, NAMELEN, "%d.mtr.%s.%s", hops, key, ipinfo_domain)
             >= NAMELEN)
             return NULL;
     }
@@ -414,13 +412,14 @@ int get_allinuse_iiwidth(
 
 char *fmt_ipinfo(
     struct mtr_ctl *ctl,
-    ip_t * addr)
+    ip_t * addr,
+    int hops)
 {
     char fmt[8];
     static char fmtinfo[32];
     char *ipinfo = NULL;
 
-    ipinfo = get_ipinfo(ctl, addr);
+    ipinfo = get_ipinfo(ctl, addr, hops);
     snprintf(fmt, sizeof(fmt), "%s%%-%ds", ctl->ipinfo_no ? "" : "AS",
              get_iiwidth(ctl->ipinfo_no));
 
@@ -440,15 +439,19 @@ int is_printii(
             (ctl->ipinfo_no < ctl->ipinfo_max));
 }
 
+/*
+ * Get the ipinfo individual field information.
+ */
 char *ipinfo_get_content(
     struct mtr_ctl *ctl,
     ip_t * addr,
-    int ipinfo_index)
+    int ipinfo_index,
+    int hops)
 {
     char *content;
 
     ctl->ipinfo_no = ipinfo_index;
-    content = fmt_ipinfo(ctl, addr);
+    content = fmt_ipinfo(ctl, addr, hops);
 
     if (strlen(content) == 0)
         content = EMPTY;
@@ -456,11 +459,15 @@ char *ipinfo_get_content(
     return content;
 }
 
+/*
+ * Gets all Ipinfo information based on the specified format in data_fields[]
+ */
 int get_ipinfo_compose(
     struct mtr_ctl *ctl, // [in] param
     ip_t *addr,          // [in] param
     char *buf,           // [in|output] param
-    int buflen)          // [in] param
+    int buflen,          // [in] param
+    int hops)
 {
 	int i, j, hd_len;
 	unsigned char key;
@@ -474,7 +481,7 @@ int get_ipinfo_compose(
 		    break;
 		snprintf(buf + hd_len, buflen - hd_len,
 		        data_fields[j].format,
-		        data_fields[j].ipinfo_xxx(ctl, addr, ipinfo_key2no(key)));
+		        data_fields[j].ipinfo_xxx(ctl, addr, ipinfo_key2no(key), hops));
 
 		hd_len += (data_fields[j].length);
 	}
