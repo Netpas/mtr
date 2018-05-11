@@ -129,7 +129,7 @@ int mtr_curses_keyaction(
     struct mtr_ctl *ctl)
 {
     int c = getch();
-    int i = 0, j, k;
+    int i = 0, j;
     int offset;
     float f = 0.0;
     char buf[MAXFLD + 1];
@@ -284,8 +284,7 @@ int mtr_curses_keyaction(
         return ActionNone;
         /* fields to display & their ordering */
     case 'o':
-        //mvprintw(2, 0, "Fields: %s\n\n", ctl->fld_active);
-        mvprintw(2, 0, "Fields: \n\n");
+        mvprintw(2, 0, "Fields: %s\n\n", ctl->fld_active);
 
         printw("  WARN: The field order of IPINFO will be automatically adjusted in the front and in order\n\n");
         for (i = 0; i < MAXFLD; i++) {
@@ -312,16 +311,20 @@ int mtr_curses_keyaction(
 
         ctl->ipinfo_arr = 0;
         ctl->ipinfo_no = -1;
-        for (i = 0, j = 0, k = 0; buf[i]; i++) {
+        for (i = 0, j = 0; buf[i]; i++) {
             if (is_ipinfo_filed(buf[i])) {
                 ctl->ipinfo_arr |= (1 << ipinfo_key2no(buf[i]));
-                fld_ipinfo[k++] = buf[i];
                 continue;
             }
             fld_tmp[j++] = buf[i];
         }
         if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
             ctl->ipinfo_no = (int)log2(ctl->ipinfo_arr & (0 - ctl->ipinfo_arr));
+        }
+        for (i = 0, j = 0; i < IPINFO_NUMS; i++) {
+            if (IS_INDEX_IPINFO(ctl->ipinfo_arr, i)) {
+                fld_ipinfo[j++] = ipinfo_no2key(i);
+            }
         }
         strcat(fld_ipinfo, fld_tmp);
         if (strlen(fld_ipinfo) > 0)
@@ -376,7 +379,7 @@ int mtr_curses_keyaction(
             ("  o str   set the columns to display, default str='LRS N BAWV'\n");
         printw
             ("  j       toggle latency(LS NABWV)/jitter(DR AGJMXI) stats\n");
-        printw("  c <n>   report cycle n, default n=infinite\n");
+        //printw("  c <n>   report cycle n, default n=infinite\n");
         printw
             ("  i <n>   set the ping interval to n seconds, default n=1\n");
         printw
@@ -388,6 +391,7 @@ int mtr_curses_keyaction(
             ("  b <c>   set ping bit pattern to c(0..255) or random(c<0)\n");
         printw("  Q <t>   set ping packet's TOS to t\n");
         printw("  u       switch between ICMP ECHO and UDP datagrams\n");
+        printw("  t       switch between ICMP ECHO and TCP datagrams\n");
 #ifdef HAVE_IPINFO
         printw("  y       switching IP info\n");
         printw("  z       toggle ASN info on/off\n");
@@ -457,7 +461,7 @@ static void mtr_curses_hosts(
                 attron(A_BOLD);
 
 #ifdef HAVE_IPINFO
-            i = get_ipinfo_compose(ctl, addr, buf, sizeof(buf));
+            i = get_ipinfo_compose(ctl, addr, buf, sizeof(buf), at+1);
             printw("%s", buf);
 #endif
 
@@ -513,7 +517,7 @@ static void mtr_curses_hosts(
                     attron(A_BOLD);
                 printw("\n    ");
 #ifdef HAVE_IPINFO
-                get_ipinfo_compose(ctl, addr, buf, sizeof(buf));
+                get_ipinfo_compose(ctl, addrs, buf, sizeof(buf), at+1);
                 printw("%s", buf);
 #endif
                 if (name != NULL) {
@@ -679,7 +683,7 @@ static void mtr_curses_graph(
 
 #ifdef HAVE_IPINFO
             char buf[1024];
-            get_ipinfo_compose(ctl, addr, buf, sizeof(buf));
+            get_ipinfo_compose(ctl, addr, buf, sizeof(buf), at+1);
             printw("%s", buf);
 #endif
             name = dns_lookup(ctl, addr);

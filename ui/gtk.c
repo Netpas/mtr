@@ -533,7 +533,7 @@ static void update_tree_row(
     char buf[1024];
 
     if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
-        get_ipinfo_compose(ctl, addr, buf, sizeof(buf));
+        get_ipinfo_compose(ctl, addr, buf, sizeof(buf), row+1);
         gtk_list_store_set(ReportStore, iter, COL_ASN, buf, -1);
     }
 #endif

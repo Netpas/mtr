@@ -37,7 +37,8 @@ extern void asn_close(
     struct mtr_ctl *ctl);
 extern char *fmt_ipinfo(
     struct mtr_ctl *ctl,
-    ip_t * addr);
+    ip_t * addr,
+    int hops);
 extern ATTRIBUTE_CONST size_t get_iiwidth_len(
     void);
 extern ATTRIBUTE_CONST int get_iiwidth(
@@ -49,9 +50,11 @@ extern int is_printii(
 extern char *ipinfo_get_content(
     struct mtr_ctl *ctl,
     ip_t * addr,
-    int ipinfo_index);
+    int ipinfo_index,
+    int hops);
 extern int get_ipinfo_compose(
     struct mtr_ctl *ctl,
     ip_t *addr,
     char *buf,
-    int buflen);
+    int buflen,
+    int hops);
