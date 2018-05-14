@@ -195,6 +195,7 @@ void *wait_loop(
     int nfds;
     fd_set readers, writers;
     ares_channel channel = (ares_channel)arg;
+    struct timeval tv, *tvp;
 
     while (1) {
         if (sigstat == 1)
@@ -211,7 +212,14 @@ void *wait_loop(
                 continue;
             }
         }
-        if (select(nfds, &readers, &writers, NULL, NULL) > 0) {
+
+        if (!iihash) {
+            tvp = ares_timeout(channel, NULL, &tv);
+        } else {
+            tvp = NULL;
+        }
+
+        if (select(nfds, &readers, &writers, NULL, tvp) > 0) {
             ares_process(channel, &readers, &writers);
         }
      }
