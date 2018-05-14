@@ -89,10 +89,6 @@ static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 15};   /* item len + space
 static int prefix_arr[4] = {8, 12, 16, 16};
 static unsigned int mask_ip_scope[4];
 static unsigned int private_ip_scope[4];
-/* used for checking netpas specified open ip */
-static int netpas_prefix_arr[2] = {17, 16};
-static unsigned int netpas_open_ip_scope[2];
-static unsigned int netpas_mask_ip_scope[2];
 
 #ifdef ENABLE_IPV6
 char ipinfo_domain6[128] = "origin6.asn.cymru.com";
@@ -273,24 +269,6 @@ static void init_private_ip(void)
 		mask_ip_scope[i] <<= (32 - prefix_arr[i]);
 		mask_ip_scope[i] &= 0xffffffff;
 	}
-
-    // netpas specified open ip address
-	netpas_open_ip_scope[0] = 174063616L;	// 10.96.0.0/17
-    netpas_open_ip_scope[1] = 176095232L;	// 10.127.0.0/16
-    for (i = 0; i < 2; i++) {
-        netpas_mask_ip_scope[i] = 0xffffffff;
-        netpas_mask_ip_scope[i] <<= (32 - netpas_prefix_arr[i]);
-        netpas_mask_ip_scope[i] &= 0xffffffff;
-    }
-}
-
-static int is_netpas_openseg(unsigned int ipaddr)
-{
-    if (((ipaddr & netpas_mask_ip_scope[0]) == netpas_open_ip_scope[0]) ||
-        ((ipaddr & netpas_mask_ip_scope[1]) == netpas_open_ip_scope[1]))
-        return 1;
-
-    return 0;
 }
 
 static int is_private_ip(ip_t *addr)
@@ -304,14 +282,9 @@ static int is_private_ip(ip_t *addr)
 
     ipaddr = htonl((*(struct in_addr *)addr).s_addr);
 
-	for (i = 1; i < 4; i++) {
+	for (i = 0; i < 4; i++) {
 		if ((ipaddr & mask_ip_scope[i]) == private_ip_scope[i])
 			return 1;
-	}
-	if ((ipaddr & mask_ip_scope[0]) == private_ip_scope[0]) {
-		if ((strcmp(ipinfo_domain, NETPAS_DOMAIN) != 0) ||
-            !is_netpas_openseg(ipaddr))
-		    return 1;
 	}
 
 	return 0;
@@ -360,7 +333,6 @@ static char *get_ipinfo(
                      >= NAMELEN)
                 return NULL;
         }
-
     }
 
     if (iihash) {
