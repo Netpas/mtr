@@ -898,7 +898,6 @@ int main(
     char ipinfo_fld[2 * MAXFLD] = {0};
     names_t *names_head = NULL;
     names_t *names_walk;
-    int i, j;
 
     myname = argv[0];
     struct mtr_ctl ctl;
@@ -952,7 +951,7 @@ int main(
         ctl.ipinfo_no = (int)log2(ctl.ipinfo_arr & (0 - ctl.ipinfo_arr));
     }
     // use ctl.ipinfo_arr to fill up ctl.fld_active
-    for (i = 0, j = 0; i < IPINFO_NUMS; i++) {
+    for (int i = 0, j = 0; i < IPINFO_NUMS; i++) {
         if (IS_INDEX_IPINFO(ctl.ipinfo_arr, i)) {
             switch (i) {
                 case ASN:          ipinfo_fld[j++] = 'Z'; break;
