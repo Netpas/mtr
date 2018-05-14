@@ -215,6 +215,9 @@ void *wait_loop(
 
         if (!iihash) {
             tvp = ares_timeout(channel, NULL, &tv);
+            if ((tvp->tv_sec == 0) && (tvp->tv_usec == 0)) {
+                tvp->tv_sec += 3;
+            }
         } else {
             tvp = NULL;
         }
@@ -469,7 +472,7 @@ int get_allinuse_iiwidth(
     return width;
 }
 
-char *fmt_ipinfo(
+static char *fmt_ipinfo(
     struct mtr_ctl *ctl,
     ip_t * addr,
     int hops)
@@ -490,13 +493,13 @@ char *fmt_ipinfo(
 
     return fmtinfo;
 }
-
+/*
 int is_printii(
     struct mtr_ctl *ctl)
 {
     return ((ctl->ipinfo_no >= 0) &&
             (ctl->ipinfo_no < ctl->ipinfo_max));
-}
+}*/
 
 /*
  * Get the ipinfo individual field information.
