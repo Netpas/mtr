@@ -240,6 +240,8 @@ static void __attribute__ ((__noreturn__)) usage(FILE * out)
     fputs("     --ipinfo-carrier           display carrier, equal to -y 6\n", out);
     fputs("     --ipinfo-geo               display geo, equal to -y 7\n", out);
     fputs("     --ipinfo-dns DOMAIN_NAME   Specify DOMAIN_NAME to query DNS data\n", out);
+    fputs("     --ipinfo-spec-ip IP/SUBNET-MASK[,IP/SUBNET-MASK,...]\n"
+          "                                reserved for Netpas\n", out);
     fputs(" -z, --aslookup                 display AS number\n", out);
 #endif
     fputs(" -h, --help                     display this help and exit\n", out);
@@ -397,6 +399,21 @@ static void process_ipinfo_arr(struct mtr_ctl *ctl, char *optarg)
 	}
 }
 
+static void process_specific_ip_segment(char *optarg)
+{
+    char *t;
+
+	if (optarg == NULL)
+		return;
+
+	t = strtok(optarg, ",");
+	while (t != NULL) {
+        process_ip_prefix(t);
+
+		t = strtok(NULL, ",");
+	}
+}
+
 static void parse_arg(
     struct mtr_ctl *ctl,
     names_t ** names,
@@ -421,7 +438,8 @@ static void parse_arg(
         OPT_CITY,
         OPT_CARRIER,
         OPT_GEO,
-        OPT_DNS
+        OPT_DNS,
+        OPT_SPECIP
     };
     static const struct option long_options[] = {
         /* option name, has argument, NULL, short name */
@@ -465,6 +483,7 @@ static void parse_arg(
         {"ipinfo-carrier", 0, NULL, OPT_CARRIER},
         {"ipinfo-geo", 0, NULL, OPT_GEO},
         {"ipinfo-dns", 1, NULL, OPT_DNS},
+        {"ipinfo-spec-ip", 1, NULL, OPT_SPECIP},
 #endif
 
         {"interval", 1, NULL, 'i'},
@@ -760,6 +779,11 @@ static void parse_arg(
         case OPT_DNS:
             if (optarg) {
                 strncpy(ipinfo_domain, optarg, sizeof(ipinfo_domain) - 1);
+            }
+            break;
+        case OPT_SPECIP:
+            if (optarg) {
+                process_specific_ip_segment(optarg);
             }
             break;
 #endif

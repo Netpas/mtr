@@ -412,6 +412,9 @@ You can combine this option with other --ipinfo- or -y options.
 .B -\-ipinfo\-dns \fIDOMAIN_NAME
 Specify special DOMAIN_NAME to query the DNS data. The default value for this parameter is origin6.asn.cymru.com .
 .TP
+.B -\-ipinfo\-spec\-ip \fIIP\fR/\fISUBNET-MASK\fR[,\fIIP\fR/\fISUBNET-MASK\fR,...]
+Reserved for Netpas. Specify a part of the private address that still sends a DNS request when encounters such an address.
+.TP
 .B \-z\fR, \fB\-\-aslookup
 Displays the Autonomous System (AS) number alongside each hop.  Equivalent to \fB\-\-ipinfo 0\fR.
 .IP

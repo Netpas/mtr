@@ -58,3 +58,5 @@ extern int get_ipinfo_compose(
     char *buf,
     int buflen,
     int hops);
+extern void process_ip_prefix(
+    char *ipprefix);
