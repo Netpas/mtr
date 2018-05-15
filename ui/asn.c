@@ -225,6 +225,10 @@ void *wait_loop(
         if (select(nfds, &readers, &writers, NULL, tvp) > 0) {
             ares_process(channel, &readers, &writers);
         }
+
+        if (!iihash) {
+            break;
+        }
      }
 
      return NULL;
@@ -285,7 +289,7 @@ void process_ip_prefix(char *ipprefix)
     }
     *p++ = '\0';
 
-    spec_prefix_arr[index] = strtonum_or_err(p, "invalid argument", STRTO_INT);
+    spec_prefix_arr[index] = strtonum_or_err(p, "invalid argument", STRTO_U32INT);
     if (spec_prefix_arr[index] <= 0 || spec_prefix_arr[index] >= 32) {
         *(--p) = '/';
         error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
@@ -311,10 +315,10 @@ static void init_private_ip(void)
     int i;
 
     // general private ip address
-    private_ip_scope[0] = 167772160L;	// 10.0.0.0/8
-	private_ip_scope[1] = 2886729728L;	// 172.16.0.0/12
-	private_ip_scope[2] = 3232235520L;	// 192.168.0.0/16
-	private_ip_scope[3] = 1681915904L;	// 100.64.0.0/16
+    private_ip_scope[0] = 167772160UL;	// 10.0.0.0/8
+	private_ip_scope[1] = 2886729728UL;	// 172.16.0.0/12
+	private_ip_scope[2] = 3232235520UL;	// 192.168.0.0/16
+	private_ip_scope[3] = 1681915904UL;	// 100.64.0.0/16
 	for (i = 0; i < 4; i++) {
 		mask_ip_scope[i] = 0xffffffff;
 		mask_ip_scope[i] <<= (32 - prefix_arr[i]);
