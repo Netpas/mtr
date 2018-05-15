@@ -398,7 +398,7 @@ static void TreeViewCreate(
                      G_CALLBACK(ReportTreeView_clicked), ctl);
 
 #ifdef HAVE_IPINFO
-    if (is_printii(ctl)) {
+    if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
         renderer = gtk_cell_renderer_text_new();
         column = gtk_tree_view_column_new_with_attributes("ASN",
                                                           renderer,

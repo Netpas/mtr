@@ -65,10 +65,11 @@
 #define ITEMSMAX        15
 #define ITEMSEP         '|'
 #define NAMELEN         127
+#define SPECIP_MAX      10
 #define UNKN            "???"
 #define EMPTY           "--"
 #define SEMPATH         "sem"
-#define NETPAS_DOMAIN  "ip.xelerate.ai"
+#define NETPAS_DOMAIN   "ip.xelerate.ai"
 
 typedef char *items_t[ITEMSMAX + 1];
 struct comparm {
@@ -89,6 +90,10 @@ static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 15};   /* item len + space
 static int prefix_arr[4] = {8, 12, 16, 16};
 static unsigned int mask_ip_scope[4];
 static unsigned int private_ip_scope[4];
+/* used for specific ip segment in private ip */
+static int spec_prefix_arr[SPECIP_MAX];
+static unsigned int spec_mask_ip_scope[SPECIP_MAX];
+static unsigned int spec_ip_scope[SPECIP_MAX];
 
 #ifdef ENABLE_IPV6
 char ipinfo_domain6[128] = "origin6.asn.cymru.com";
@@ -190,6 +195,7 @@ void *wait_loop(
     int nfds;
     fd_set readers, writers;
     ares_channel channel = (ares_channel)arg;
+    struct timeval tv, *tvp;
 
     while (1) {
         if (sigstat == 1)
@@ -206,7 +212,17 @@ void *wait_loop(
                 continue;
             }
         }
-        if (select(nfds, &readers, &writers, NULL, NULL) > 0) {
+
+        if (!iihash) {
+            tvp = ares_timeout(channel, NULL, &tv);
+            if ((tvp->tv_sec == 0) && (tvp->tv_usec == 0)) {
+                tvp->tv_sec += 3;
+            }
+        } else {
+            tvp = NULL;
+        }
+
+        if (select(nfds, &readers, &writers, NULL, tvp) > 0) {
             ares_process(channel, &readers, &writers);
         }
      }
@@ -255,6 +271,41 @@ static void reverse_host6(
 }
 #endif
 
+void process_ip_prefix(char *ipprefix)
+{
+    char *p = NULL;
+    static int index = 0;
+
+    if (index >= (sizeof(spec_prefix_arr)/sizeof(spec_prefix_arr[0])))
+        return;
+
+    p = strrchr(ipprefix, '/');
+    if (p == NULL) {
+        error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
+    }
+    *p++ = '\0';
+
+    spec_prefix_arr[index] = strtonum_or_err(p, "invalid argument", STRTO_INT);
+    if (spec_prefix_arr[index] <= 0 || spec_prefix_arr[index] >= 32) {
+        *(--p) = '/';
+        error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
+    }
+
+    spec_mask_ip_scope[index] = 0xffffffff;
+    spec_mask_ip_scope[index] <<= (32 - spec_prefix_arr[index]);
+    spec_mask_ip_scope[index] &= 0xffffffff;
+
+    spec_ip_scope[index] = inet_addr(ipprefix);
+    if (spec_ip_scope[index] == INADDR_NONE) {
+        *(--p) = '/';
+        error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
+    }
+    spec_ip_scope[index] = htonl(spec_ip_scope[index]);
+    spec_ip_scope[index] &= spec_mask_ip_scope[index];
+
+    index++;
+}
+
 static void init_private_ip(void)
 {
     int i;
@@ -281,6 +332,15 @@ static int is_private_ip(ip_t *addr)
     }
 
     ipaddr = htonl((*(struct in_addr *)addr).s_addr);
+
+    if (strcmp(ipinfo_domain, NETPAS_DOMAIN) == 0) {
+        i = 0;
+        while (spec_prefix_arr[i] != 0) {
+            if ((ipaddr & spec_mask_ip_scope[i]) == spec_ip_scope[i])
+                return 0;
+            i++;
+        }
+    }
 
 	for (i = 0; i < 4; i++) {
 		if ((ipaddr & mask_ip_scope[i]) == private_ip_scope[i])
@@ -412,7 +472,7 @@ int get_allinuse_iiwidth(
     return width;
 }
 
-char *fmt_ipinfo(
+static char *fmt_ipinfo(
     struct mtr_ctl *ctl,
     ip_t * addr,
     int hops)
@@ -433,13 +493,13 @@ char *fmt_ipinfo(
 
     return fmtinfo;
 }
-
+/*
 int is_printii(
     struct mtr_ctl *ctl)
 {
     return ((ctl->ipinfo_no >= 0) &&
             (ctl->ipinfo_no < ctl->ipinfo_max));
-}
+}*/
 
 /*
  * Get the ipinfo individual field information.

@@ -147,9 +147,10 @@ void report_close(
         snprint_addr(ctl, name, sizeof(name), addr);
 
 #ifdef HAVE_IPINFO
-        if (is_printii(ctl)) {
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
             snprintf(buf, sizeof(buf), " %2d. ", at + 1);
-            get_ipinfo_compose(ctl, addr, buf, sizeof(buf), at+1);
+            get_ipinfo_compose(ctl, addr, buf + strlen(buf),
+                                sizeof(buf) - strlen(buf), at + 1);
             snprintf(fmt, sizeof(fmt), "%%-%zus", len_hosts);
             snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), fmt, name);
         } else {
@@ -201,7 +202,7 @@ void report_close(
             if (!found) {
 
 #ifdef HAVE_IPINFO
-                if (is_printii(ctl)) {
+                if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
                     if (mpls->labels && z == 1 && ctl->enablempls)
                         print_mpls(mpls);
                     snprint_addr(ctl, name, sizeof(name), addr2);
@@ -243,7 +244,7 @@ void report_close(
 
         /* No multipath */
 #ifdef HAVE_IPINFO
-        if (is_printii(ctl)) {
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
             if (mpls->labels && z == 1 && ctl->enablempls)
                 print_mpls(mpls);
         }
