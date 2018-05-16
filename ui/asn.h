@@ -56,3 +56,5 @@ extern int get_ipinfo_compose(
     int hops);
 extern void process_ip_prefix(
     char *ipprefix);
+extern int ipinfo_waitfd(fd_set *readfd);
+extern void ipinfo_ack(fd_set *readfd);

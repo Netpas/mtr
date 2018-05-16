@@ -48,7 +48,7 @@ void select_loop(
     fd_set writefd;
     int anyset = 0;
     int maxfd = 0;
-    int dnsfd, netfd;
+    int dnsfd, netfd, ipinfo_maxfd;
 #ifdef ENABLE_IPV6
     int dnsfd6;
 #endif
@@ -106,6 +106,12 @@ void select_loop(
         FD_SET(netfd, &readfd);
         if (netfd >= maxfd)
             maxfd = netfd + 1;
+
+#ifdef HAVE_IPINFO
+        ipinfo_maxfd = ipinfo_waitfd(&readfd);
+        if (ipinfo_maxfd > maxfd)
+            maxfd = ipinfo_maxfd;
+#endif
 
         do {
             if (anyset || paused) {
@@ -211,6 +217,10 @@ void select_loop(
             dns_ack(ctl);
             anyset = 1;
         }
+
+#ifdef HAVE_IPINFO
+        ipinfo_ack(&readfd);
+#endif
 
         /*  Has a key been pressed?  */
         if (FD_ISSET(0, &readfd)) {
