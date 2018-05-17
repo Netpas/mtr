@@ -77,15 +77,14 @@ struct comparm {
     char key[NAMELEN];
 };
 
-static int iihash = 0;
-static pthread_t tid;
 static ares_channel channel;
-static char syncstr[20];
 static items_t items_a;
-static sem_t sem;
-static volatile int sigstat = 0;
+static int iihash = 0;
+static int bitmask;
+static ares_socket_t socks[ARES_GETSOCK_MAXNUM];
+static char syncstr[20];
 /* items width: ASN, Route, Country, Registry, Allocated, City, Carrier, Geo */
-static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 15};   /* item len + space */
+static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 25};   /* item len + space */
 /* used for checking private ip */
 static int prefix_arr[4] = {8, 12, 16, 16};
 static unsigned int mask_ip_scope[4];
@@ -189,45 +188,61 @@ static void query_callback (
     free(parm);
 }
 
-void *wait_loop(
-    void *arg)
+int ipinfo_waitfd(
+    fd_set *readfd)
+{
+    if (!iihash) {
+        return -1;
+    }
+
+    bitmask = ares_getsock(channel, socks, ARES_GETSOCK_MAXNUM);
+    return ares_fds(channel, readfd, NULL);
+}
+
+void ipinfo_ack(
+    fd_set *readfd)
+{
+    int i;
+    int ready = 0;
+
+    if (!iihash) {
+        return;
+    }
+
+    for (i = 0; i < ARES_GETSOCK_MAXNUM; i++) {
+        if (ARES_GETSOCK_READABLE(bitmask, i)) {
+            if (FD_ISSET(socks[i], readfd)) {
+                ready = 1;
+                break;
+            }
+        }
+    }
+    if (ready == 1) {
+        ares_process(channel, readfd, NULL);
+    }
+}
+
+void wait_ack(
+    void)
 {
     int nfds;
-    fd_set readers, writers;
-    ares_channel channel = (ares_channel)arg;
+    fd_set readers;
     struct timeval tv, *tvp;
 
-    while (1) {
-        if (sigstat == 1)
-            break;
+    FD_ZERO(&readers);
+    nfds = ares_fds(channel, &readers, NULL);
+    if (nfds == 0) {
+        return ;
+    }
 
-        FD_ZERO(&readers);
-        FD_ZERO(&writers);
-        nfds = ares_fds(channel, &readers, &writers);
-        if (nfds == 0) {
-            if (!iihash) {
-                break;
-            } else {
-                sem_wait(&sem);
-                continue;
-            }
-        }
+    tvp = ares_timeout(channel, NULL, &tv);
+    if ((tvp->tv_sec == 0) && (tvp->tv_usec == 0)) {
+        tvp->tv_sec += 3;
+    }
 
-        if (!iihash) {
-            tvp = ares_timeout(channel, NULL, &tv);
-            if ((tvp->tv_sec == 0) && (tvp->tv_usec == 0)) {
-                tvp->tv_sec += 3;
-            }
-        } else {
-            tvp = NULL;
-        }
-
-        if (select(nfds, &readers, &writers, NULL, tvp) > 0) {
-            ares_process(channel, &readers, &writers);
-        }
-     }
-
-     return NULL;
+    if (select(nfds, &readers, NULL, NULL, tvp) > 0) {
+        ares_process(channel, &readers, NULL);
+    }
 }
 
 static void ipinfo_lookup(
@@ -245,12 +260,9 @@ static void ipinfo_lookup(
     }
 
     ares_query(channel, domain, C_IN, T_TXT, query_callback, parm);
-    if (iihash) {
-        sem_post(&sem);
-    }
 
     if (!iihash) {
-        wait_loop(channel);
+        wait_ack();
     }
 }
 
@@ -285,7 +297,7 @@ void process_ip_prefix(char *ipprefix)
     }
     *p++ = '\0';
 
-    spec_prefix_arr[index] = strtonum_or_err(p, "invalid argument", STRTO_INT);
+    spec_prefix_arr[index] = strtonum_or_err(p, "invalid argument", STRTO_U32INT);
     if (spec_prefix_arr[index] <= 0 || spec_prefix_arr[index] >= 32) {
         *(--p) = '/';
         error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
@@ -311,10 +323,10 @@ static void init_private_ip(void)
     int i;
 
     // general private ip address
-    private_ip_scope[0] = 167772160L;	// 10.0.0.0/8
-	private_ip_scope[1] = 2886729728L;	// 172.16.0.0/12
-	private_ip_scope[2] = 3232235520L;	// 192.168.0.0/16
-	private_ip_scope[3] = 1681915904L;	// 100.64.0.0/16
+    private_ip_scope[0] = 167772160UL;	// 10.0.0.0/8
+	private_ip_scope[1] = 2886729728UL;	// 172.16.0.0/12
+	private_ip_scope[2] = 3232235520UL;	// 192.168.0.0/16
+	private_ip_scope[3] = 1681915904UL;	// 100.64.0.0/16
 	for (i = 0; i < 4; i++) {
 		mask_ip_scope[i] = 0xffffffff;
 		mask_ip_scope[i] <<= (32 - prefix_arr[i]);
@@ -463,9 +475,6 @@ int get_allinuse_iiwidth(
     for (i = 0; i < IPINFO_NUMS; i++) {
         if (IS_INDEX_IPINFO(ctl->ipinfo_arr, i)) {
             width += get_iiwidth(i);
-            if (i == ASN) {
-                width += 2; /* align header: AS */
-            }
         }
     }
 
@@ -565,17 +574,6 @@ void asn_open(
         error(0, 0, "ares_init failed");
         return;
     }
-
-    if (sem_open(SEMPATH, O_CREAT|O_RDWR, 0666, 0) == SEM_FAILED) {
-        error(0, 0, "sem_open failed");
-        return;
-    }
-
-    if (pthread_create(&tid, NULL, wait_loop, channel)) {
-        error(0, 0, "pthread_create failed");
-        tid = pthread_self();
-    }
-    pthread_detach(tid);
 }
 
 void asn_close(
@@ -588,10 +586,4 @@ void asn_close(
     }
 
     ares_destroy(channel);
-    if (pthread_equal(tid, pthread_self()) == 0) {
-        sigstat = 1;
-        sem_post(&sem);
-    }
-    sem_close(&sem);
-    sem_unlink(SEMPATH);
 }
