@@ -3,7 +3,7 @@
     Copyright (C) 1997,1998  Matt Kimball
 
     This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License version 2 as 
+    it under the terms of the GNU General Public License version 2 as
     published by the Free Software Foundation.
 
     This program is distributed in the hope that it will be useful,
@@ -48,7 +48,7 @@ void select_loop(
     fd_set writefd;
     int anyset = 0;
     int maxfd = 0;
-    int dnsfd, netfd;
+    int dnsfd, netfd, ipinfo_maxfd;
 #ifdef ENABLE_IPV6
     int dnsfd6;
 #endif
@@ -61,6 +61,7 @@ void select_loop(
     int graceperiod = 0;
     struct timeval intervaltime;
     static double dnsinterval = 0;
+    char fld_field_tmp[2 * MAXFLD] = {0};
 
     memset(&startgrace, 0, sizeof(startgrace));
 
@@ -105,6 +106,12 @@ void select_loop(
         FD_SET(netfd, &readfd);
         if (netfd >= maxfd)
             maxfd = netfd + 1;
+
+#ifdef HAVE_IPINFO
+        ipinfo_maxfd = ipinfo_waitfd(&readfd);
+        if (ipinfo_maxfd > maxfd)
+            maxfd = ipinfo_maxfd;
+#endif
 
         do {
             if (anyset || paused) {
@@ -211,6 +218,10 @@ void select_loop(
             anyset = 1;
         }
 
+#ifdef HAVE_IPINFO
+        ipinfo_ack(&readfd);
+#endif
+
         /*  Has a key been pressed?  */
         if (FD_ISSET(0, &readfd)) {
             switch (display_keyaction(ctl)) {
@@ -245,15 +256,49 @@ void select_loop(
                 break;
 #ifdef HAVE_IPINFO
             case ActionII:
+                if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr) &&
+                    ((ctl->ipinfo_arr & (ctl->ipinfo_arr -1)) != 0))
+                    break;
+
                 ctl->ipinfo_no++;
-                if (ctl->ipinfo_no > ctl->ipinfo_max)
-                    ctl->ipinfo_no = 0;
+
+                if (ctl->ipinfo_no == ctl->ipinfo_max) {
+                    ctl->ipinfo_no = -1;
+                    ctl->ipinfo_arr = 0;
+                    strcpy(ctl->fld_active, ctl->fld_active+1);
+                    break;
+                }
+
+                memset(fld_field_tmp, 0, sizeof(fld_field_tmp));
+                if (IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+                    fld_field_tmp[0] = ipinfo_no2key(ctl->ipinfo_no);
+                    strcat(fld_field_tmp, ctl->fld_active);
+                    strcpy(ctl->fld_active, fld_field_tmp);
+                } else {
+                    ctl->fld_active[0] = ipinfo_no2key(ctl->ipinfo_no);
+                }
+                ctl->ipinfo_arr = (1 << ctl->ipinfo_no);
                 break;
             case ActionAS:
-                ctl->ipinfo_no = ctl->ipinfo_no ? 0 : ctl->ipinfo_max;
+                if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr) &&
+                    !(((ctl->ipinfo_arr & (ctl->ipinfo_arr -1)) == 0) &&
+                        (ctl->ipinfo_no == ASN)))
+                    break;
+
+                if (IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+                    ctl->ipinfo_no = ASN;
+                    ctl->ipinfo_arr = (1 << ASN);
+                    memset(fld_field_tmp, 0, sizeof(fld_field_tmp));
+                    fld_field_tmp[0] = ipinfo_no2key(ctl->ipinfo_no);
+                    strcat(fld_field_tmp, ctl->fld_active);
+                    strcpy(ctl->fld_active, fld_field_tmp);
+                } else {
+                    strcpy(ctl->fld_active, ctl->fld_active+1);
+                    ctl->ipinfo_no = -1;
+                    ctl->ipinfo_arr = 0;
+                }
                 break;
 #endif
-
             case ActionScrollDown:
                 ctl->display_offset += 5;
                 break;

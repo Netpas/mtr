@@ -53,6 +53,30 @@ mtr \- a network diagnostic tool
 .BI \-y \ IPINFO\c
 ]
 [\c
+.B \-\-ipinfo\-asn\c
+]
+[\c
+.B \-\-ipinfo\-ip\-prefix\c
+]
+[\c
+.B \-\-ipinfo\-country\c
+]
+[\c
+.B \-\-ipinfo\-register\c
+]
+[\c
+.B \-\-ipinfo\-date\c
+]
+[\c
+.B \-\-ipinfo\-city\c
+]
+[\c
+.B \-\-ipinfo\-carrier\c
+]
+[\c
+.B \-\-ipinfo\-geo\c
+]
+[\c
 .B \-\-aslookup\c
 ]
 [\c
@@ -66,9 +90,6 @@ mtr \- a network diagnostic tool
 ]
 [\c
 .BI \-B \ BITPATTERN\c
-]
-[\c
-.BI \-G \ GRACEPERIOD\c
 ]
 [\c
 .BI \-Q \ TOS\c
@@ -114,38 +135,38 @@ mtr \- a network diagnostic tool
 ]
 .I HOSTNAME
 .SH DESCRIPTION
-.B mtr 
-combines the functionality of the 
+.B mtr
+combines the functionality of the
 .B traceroute
-and 
+and
 .B ping
 programs in a single network diagnostic tool.
 .PP
-As 
-.B mtr 
-starts, it investigates the network connection between the host 
+As
 .B mtr
-runs on and 
+starts, it investigates the network connection between the host
+.B mtr
+runs on and
 .BR HOSTNAME
 by sending packets with purposely low TTLs.  It continues to send
 packets with low TTL, noting the response time of the intervening
-routers.  This allows 
-.B mtr 
+routers.  This allows
+.B mtr
 to print the response percentage and response times of the internet
-route to 
-.BR HOSTNAME . 
+route to
+.BR HOSTNAME .
 A sudden increase in packet loss or response time is often an indication
-of a bad (or simply overloaded) link. 
+of a bad (or simply overloaded) link.
 .PP
 The results are usually reported as round-trip-response times in milliseconds
-and the percentage of packetloss. 
+and the percentage of packetloss.
 .SH OPTIONS
 .TP
 .B \-h\fR, \fB\-\-help
 Print the summary of command line argument options.
 .TP
 .B \-v\fR, \fB\-\-version
-Print the installed version of mtr.  
+Print the installed version of mtr.
 .TP
 .B \-4
 Use IPv4 only.
@@ -157,33 +178,33 @@ Use IPv6 only.  (IPV4 may be used for DNS lookups.)
 Reads the list of hostnames from the specified file.
 .TP
 .B \-r\fR, \fB\-\-report
-This option puts 
+This option puts
 .B mtr
-into 
+into
 .B report
 mode.  When in this mode,
 .B mtr
-will run for the number of cycles specified by the 
+will run for the number of cycles specified by the
 .B \-c
-option, and then print statistics and exit.  
+option, and then print statistics and exit.
 .TP
 \c
-This mode is useful for generating statistics about network quality.  
-Note that each running instance of 
+This mode is useful for generating statistics about network quality.
+Note that each running instance of
 .B mtr
-generates a significant amount of network traffic.  Using 
+generates a significant amount of network traffic.  Using
 .B mtr
 to measure the quality of your network may result in decreased
-network performance.  
+network performance.
 .TP
 .B \-w\fR, \fB\-\-report\-wide
-This option puts 
+This option puts
 .B mtr
-into 
+into
 .B wide report
 mode.  When in this mode,
 .B mtr
-will not cut hostnames in the report. 
+will not cut hostnames in the report.
 .TP
 .B \-x\fR, \fB\-\-xml
 Use this option to tell
@@ -192,12 +213,12 @@ to use the xml output format.  This format is better suited for
 automated processing of the measurement results.
 .TP
 .B \-t\fR, \fB\-\-curses
-Use this option to force 
-.B mtr 
+Use this option to force
+.B mtr
 to use the curses based terminal
 interface (if available).
-In case the list of hops exceeds the 
-height of your terminal, you can use the 
+In case the list of hops exceeds the
+height of your terminal, you can use the
 .B +
 and
 .B -
@@ -215,19 +236,19 @@ information.
 .TP
 .B \-g\fR, \fB\-\-gtk
 Use this option to force
-.B mtr 
-to use the GTK+ based X11 window interface (if available).  
-GTK+ must have been available on the system when 
-.B mtr 
-was built for this to work.  See the GTK+ web page at 
+.B mtr
+to use the GTK+ based X11 window interface (if available).
+GTK+ must have been available on the system when
+.B mtr
+was built for this to work.  See the GTK+ web page at
 .UR http://\:www.\:gtk.\:org/
 .UE
 for more information about GTK+.
 .TP
 .B \-l\fR, \fB\-\-raw
 Use the raw output format.  This format is better suited for
-archival of the measurement results.  It could be parsed to 
-be presented into any of the other display methods. 
+archival of the measurement results.  It could be parsed to
+be presented into any of the other display methods.
 .IP
 Example of the raw output format:
 .nf
@@ -270,14 +291,14 @@ automated processing of the measurement results.
 .TP
 .B \-p\fR, \fB\-\-split
 Use this option to set
-.B mtr 
+.B mtr
 to spit out a format that is suitable for a split-user interface.
 .TP
 .B \-n\fR, \fB\-\-no\-dns
-Use this option to force 
-.B mtr 
+Use this option to force
+.B mtr
 to display numeric IP numbers and not try to resolve the
-host names. 
+host names.
 .TP
 .B \-b\fR, \fB\-\-show\-ips
 Use this option to tell
@@ -285,11 +306,14 @@ Use this option to tell
 to display both the host names and numeric IP numbers.  In split mode
 this adds an extra field to the output.  In report mode, there is usually
 too little space to add the IPs, and they will be truncated.  Use the
-wide report (-w) mode to see the IPs in report mode. 
+wide report (-w) mode to see the IPs in report mode.
 .TP
 .B \-o \fIFIELDS\fR, \fB\-\-order \fIFIELDS
 Use this option to specify which fields to display and in which order.
 You may use one or more space characters to separate fields.
+.br
+The field order of IPINFO will be automatically adjusted in the front and in order.
+(IPINFO fileds in order: ZPCEYTKO)
 .br
 Available fields:
 .TS
@@ -309,14 +333,24 @@ J%Current Jitter
 M%Jitter Mean/Avg.
 X%Worst Jitter
 I%Interarrival Jitter
+Z%ASN Number
+P%IP Prefix
+C%Country Code
+E%Registry
+Y%Allocation Date
+T%City
+K%Carrier
+O%Geo
 .TE
 .br
 
 Example:
 -o "LSD NBAW  X"
 .TP
-.B \-y \fIn\fR, \fB\-\-ipinfo \fIn
-Displays information about each IP hop.  Valid values for \fIn\fR are:
+.B \-y \fIm\fR[,\fIn\fR,\.\.\.], \fB\-\-ipinfo \fIm\fR[,\fIn\fR,\.\.\.]
+Displays information about each IP hop. Example: mtr -y 0,1,5 xx.com
+.br
+Valid values for \fIn\fR are:
 .TS
 tab(%);
 ll.
@@ -325,10 +359,61 @@ ll.
 2%Display country code of the origin AS
 3%Display RIR (ripencc, arin, ...)
 4%Display the allocation date of the IP prefix
+5%Display the city
+6%Display the carrier
+7%Display the Latitude and longitude information
 .TE
 .br
 
 It is possible to cycle between these fields at runtime (using the \fBy\fR key).
+.TP
+.B -\-ipinfo\-asn
+equivalent to --ipinfo 0.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.br
+Example: mtr -t --ipinfo-asn --ipinfo-date -y 3,5 xx.com
+.TP
+.B -\-ipinfo\-ip\-prefix
+equivalent to --ipinfo 1.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-country
+equivalent to --ipinfo 2.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-register
+equivalent to --ipinfo 3.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-date
+equivalent to --ipinfo 4.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-city
+equivalent to --ipinfo 5.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-carrier
+equivalent to --ipinfo 6.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-geo
+equivalent to --ipinfo 7.
+.br
+You can combine this option with other --ipinfo- or -y options.
+.TP
+.B -\-ipinfo\-dns \fIDOMAIN_NAME
+Specify special DOMAIN_NAME to query the DNS data. The default value for this parameter is origin6.asn.cymru.com .
+.TP
+.B -\-ipinfo\-spec\-ip \fIIP\fR/\fISUBNET-MASK\fR[,\fIIP\fR/\fISUBNET-MASK\fR,...]
+Reserved for Netpas. Specify a part of the private address that still sends a DNS request when encounters such an address.
 .TP
 .B \-z\fR, \fB\-\-aslookup
 Displays the Autonomous System (AS) number alongside each hop.  Equivalent to \fB\-\-ipinfo 0\fR.
@@ -345,13 +430,11 @@ Example (columns to the right not shown for clarity):
 .fi
 .TP
 .B \-i \fISECONDS\fR, \fB\-\-interval \fISECONDS
-Use this option to specify the positive number of seconds between ICMP
-ECHO requests.  The default value for this parameter is one second.  The
-root user may choose values between zero and one.
+Use this option to specify the positive number of seconds of one probe cycle. (That is, the interval between each ICMP ECHO request is SECONDS/numhosts.) The default value for this parameter is one second.  The root user may choose values between zero and one.
 .TP
 .B \-c \fICOUNT\fR, \fB\-\-report\-cycles \fICOUNT
 Use this option to set the number of pings sent to determine
-both the machines on the network and the reliability of 
+both the machines on the network and the reliability of
 those machines.  Each cycle lasts one second.
 .TP
 .B \-s \fIPACKETSIZE\fR, \fB\-\-psize \fIPACKETSIZE
@@ -366,17 +449,13 @@ Specifies bit pattern to use in payload.  Should be within range 0 - 255.  If
 .I NUM
 is greater than 255, a random pattern is used.
 .TP
-.B \-G \fISECONDS\fR, \fB\-\-gracetime \fISECONDS
-Use this option to specify the positive number of seconds to wait for responses
-after the final request. The default value is five seconds.
-.TP
 .B \-Q \fINUM\fR, \fB\-\-tos \fINUM
 Specifies value for type of service field in IP header.  Should be within range 0
 - 255.
 .TP
 .B \-e\fR, \fB\-\-mpls
-Use this option to tell 
-.B mtr 
+Use this option to tell
+.B mtr
 to display information from ICMP extensions for MPLS (RFC 4950)
 that are encoded in the response packets.
 .TP
@@ -402,7 +481,7 @@ Specifies the maximum number of hops (max time-to-live value) traceroute will
 probe.  Default is 30.
 .TP
 .B \-U \fINUM\fR, \fB\-\-max-unknown \fINUM
-Specifies the maximum unknown host. Default is 5.
+Specifies the maximum unknown host. Default is 12.
 .TP
 .B \-u\fR, \fB\-\-udp
 Use UDP datagrams instead of ICMP ECHO.
@@ -422,9 +501,9 @@ The target port number for TCP/SCTP/UDP traces.
 The source port number for UDP traces.
 .TP
 .B \-Z \fISECONDS\fR, \fB\-\-timeout \fISECONDS
-The number of seconds to keep probe sockets open before giving up on
-the connection.  Using large values for this, especially combined with
-a short interval, will use up a lot of file descriptors.
+The maximum time to wait for a probe response. Beyond this time, it is
+considered undetected. For TCP, Using large values for this, especially
+combined with a short interval, will use up a lot of file descriptors.
 .TP
 .B \-M \fIMARK\fR, \fB\-\-mark \fIMARK
 Set the mark for each packet sent through this socket similar to the
@@ -476,15 +555,15 @@ executable.
 .B DISPLAY
 Specifies an X11 server for the GTK+ frontend.
 .SH BUGS
-Some modern routers give a lower priority to ICMP ECHO packets than 
+Some modern routers give a lower priority to ICMP ECHO packets than
 to other network traffic.  Consequently, the reliability of these
-routers reported by 
+routers reported by
 .B mtr
-will be significantly lower than the actual reliability of 
-these routers.  
+will be significantly lower than the actual reliability of
+these routers.
 .SH CONTACT INFORMATION
 .PP
-For the latest version, see the mtr web page at 
+For the latest version, see the mtr web page at
 .UR http://\:www.\:bitwizard.\:nl/\:mtr/
 .UE
 .PP

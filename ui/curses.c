@@ -3,7 +3,7 @@
     Copyright (C) 1997,1998  Matt Kimball
 
     This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License version 2 as 
+    it under the terms of the GNU General Public License version 2 as
     published by the Free Software Foundation.
 
     This program is distributed in the hope that it will be useful,
@@ -22,11 +22,11 @@
 
 #include <strings.h>
 #include <unistd.h>
-
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 /* MacOSX may need this before socket.h...*/
 #if defined(HAVE_SYS_TYPES_H)
@@ -129,9 +129,12 @@ int mtr_curses_keyaction(
     struct mtr_ctl *ctl)
 {
     int c = getch();
-    int i = 0;
+    int i = 0, j;
+    int offset;
     float f = 0.0;
     char buf[MAXFLD + 1];
+    char fld_tmp[2 * MAXFLD] = {0};
+    char fld_ipinfo[2 * MAXFLD] = {0};
 
     if (c == 'Q') {             /* must be checked before c = tolower(c) */
         mvprintw(2, 0, "Type of Service(tos): %d\n", ctl->tos);
@@ -283,6 +286,7 @@ int mtr_curses_keyaction(
     case 'o':
         mvprintw(2, 0, "Fields: %s\n\n", ctl->fld_active);
 
+        printw("  WARN: The field order of IPINFO will be automatically adjusted in the front and in order\n\n");
         for (i = 0; i < MAXFLD; i++) {
             if (data_fields[i].descr != NULL)
                 printw("  %s\n", data_fields[i].descr);
@@ -304,17 +308,40 @@ int mtr_curses_keyaction(
             }
         }
         buf[i] = '\0';
-        if (strlen(buf) > 0)
-            xstrncpy(ctl->fld_active, buf, 2 * MAXFLD);
+
+        ctl->ipinfo_arr = 0;
+        ctl->ipinfo_no = -1;
+        for (i = 0, j = 0; buf[i]; i++) {
+            if (is_ipinfo_filed(buf[i])) {
+                ctl->ipinfo_arr |= (1 << ipinfo_key2no(buf[i]));
+                continue;
+            }
+            fld_tmp[j++] = buf[i];
+        }
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+            ctl->ipinfo_no = (int)log2(ctl->ipinfo_arr & (0 - ctl->ipinfo_arr));
+        }
+        for (i = 0, j = 0; i < IPINFO_NUMS; i++) {
+            if (IS_INDEX_IPINFO(ctl->ipinfo_arr, i)) {
+                fld_ipinfo[j++] = ipinfo_no2key(i);
+            }
+        }
+        strcat(fld_ipinfo, fld_tmp);
+        if (strlen(fld_ipinfo) > 0)
+            xstrncpy(ctl->fld_active, fld_ipinfo, 2 * MAXFLD);
 
         return ActionNone;
     case 'j':
+        for (offset = 0; offset < sizeof(ctl->fld_active); offset++) {
+            if (!is_ipinfo_filed(ctl->fld_active[offset]))
+                break;
+        }
         if (strchr(ctl->fld_active, 'N'))
             /* GeoMean and jitter */
-            xstrncpy(ctl->fld_active, "DR AGJMXI", 2 * MAXFLD);
+            xstrncpy(ctl->fld_active + offset, "DR AGJMXI", 2 * MAXFLD);
         else
             /* default */
-            xstrncpy(ctl->fld_active, "LS NABWV", 2 * MAXFLD);
+            xstrncpy(ctl->fld_active + offset, "LS NABWV", 2 * MAXFLD);
         return ActionNone;
     case 'u':
         switch (ctl->mtrtype) {
@@ -352,7 +379,7 @@ int mtr_curses_keyaction(
             ("  o str   set the columns to display, default str='LRS N BAWV'\n");
         printw
             ("  j       toggle latency(LS NABWV)/jitter(DR AGJMXI) stats\n");
-        printw("  c <n>   report cycle n, default n=infinite\n");
+        //printw("  c <n>   report cycle n, default n=infinite\n");
         printw
             ("  i <n>   set the ping interval to n seconds, default n=1\n");
         printw
@@ -364,6 +391,7 @@ int mtr_curses_keyaction(
             ("  b <c>   set ping bit pattern to c(0..255) or random(c<0)\n");
         printw("  Q <t>   set ping packet's TOS to t\n");
         printw("  u       switch between ICMP ECHO and UDP datagrams\n");
+        printw("  t       switch between ICMP ECHO and TCP datagrams\n");
 #ifdef HAVE_IPINFO
         printw("  y       switching IP info\n");
         printw("  z       toggle ASN info on/off\n");
@@ -415,6 +443,7 @@ static void mtr_curses_hosts(
     char buf[1024];
     int __unused_int ATTRIBUTE_UNUSED;
 
+    i = j = k = 0;
     max = net_max(ctl);
 
     for (at = net_min(ctl) + ctl->display_offset; at < max; at++) {
@@ -430,10 +459,12 @@ static void mtr_curses_hosts(
             name = dns_lookup(ctl, addr);
             if (!net_up(at))
                 attron(A_BOLD);
+
 #ifdef HAVE_IPINFO
-            if (is_printii(ctl))
-                printw(fmt_ipinfo(ctl, addr));
+            i = get_ipinfo_compose(ctl, addr, buf, sizeof(buf), at+1);
+            printw("%s", buf);
 #endif
+
             if (name != NULL) {
                 if (ctl->show_ips)
                     printw("%s (%s)", name, strlongip(ctl, addr));
@@ -448,10 +479,10 @@ static void mtr_curses_hosts(
             move(y, startstat);
 
             /* net_xxx returns times in usecs. Just display millisecs */
-            hd_len = 0;
-            for (i = 0; i < MAXFLD; i++) {
+            memset(buf, 0, sizeof(buf));
+            for (hd_len = 0; i < MAXFLD; i++) {
                 /* Ignore options that don't exist */
-                /* On the other hand, we now check the input side. Shouldn't happen, 
+                /* On the other hand, we now check the input side. Shouldn't happen,
                    can't be careful enough. */
                 j = ctl->fld_index[ctl->fld_active[i]];
                 if (j == -1)
@@ -486,8 +517,8 @@ static void mtr_curses_hosts(
                     attron(A_BOLD);
                 printw("\n    ");
 #ifdef HAVE_IPINFO
-                if (is_printii(ctl))
-                    printw(fmt_ipinfo(ctl, addrs));
+                get_ipinfo_compose(ctl, addrs, buf, sizeof(buf), at+1);
+                printw("%s", buf);
 #endif
                 if (name != NULL) {
                     if (ctl->show_ips)
@@ -651,8 +682,9 @@ static void mtr_curses_graph(
             }
 
 #ifdef HAVE_IPINFO
-            if (is_printii(ctl))
-                printw(fmt_ipinfo(ctl, addr));
+            char buf[1024];
+            get_ipinfo_compose(ctl, addr, buf, sizeof(buf), at+1);
+            printw("%s", buf);
 #endif
             name = dns_lookup(ctl, addr);
             printw("%s", name ? name : strlongip(ctl, addr));
@@ -728,7 +760,27 @@ void mtr_curses_redraw(
     printw("uit\n");
 
     if (ctl->display_mode == DisplayModeDefault) {
-        for (i = 0; i < MAXFLD; i++) {
+        // ipinfo heads
+        memset(buf, 0, sizeof(buf));
+        strncpy(buf, "    ", 4);
+        for (i = 0, hd_len = 4; i < MAXFLD; i++) {
+            j = ctl->fld_index[ctl->fld_active[i]];
+            if (!is_ipinfo_filed(data_fields[j].key)) {
+                break;
+            }
+
+            snprintf(fmt, sizeof(fmt), "%%-%ds", data_fields[j].length);
+            snprintf(buf + hd_len, sizeof(buf) - hd_len, fmt, data_fields[j].title);
+            hd_len += data_fields[j].length;
+        }
+        attron(A_BOLD);
+        mvprintw(rowstat - 1, 0, buf);
+        mvprintw(rowstat - 1, hd_len, "HOST");
+        attroff(A_BOLD);
+
+        // Packets & Pings heads
+        memset(buf, 0, sizeof(buf));
+        for (hd_len = 0; i < MAXFLD; i++) {
             j = ctl->fld_index[ctl->fld_active[i]];
             if (j < 0)
                 continue;
@@ -739,8 +791,8 @@ void mtr_curses_redraw(
             hd_len += data_fields[j].length;
         }
         attron(A_BOLD);
-        mvprintw(rowstat - 1, 0, " Host");
         mvprintw(rowstat - 1, maxx - hd_len - 1, "%s", buf);
+        mvprintw(rowstat - 2, 0, "    Ipinfo & Host");
         mvprintw(rowstat - 2, maxx - hd_len - 1,
                  "   Packets               Pings");
         attroff(A_BOLD);
@@ -754,8 +806,9 @@ void mtr_curses_redraw(
         int max_cols;
 
 #ifdef HAVE_IPINFO
-        if (is_printii(ctl))
-            padding += get_iiwidth(ctl->ipinfo_no);
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+            padding += get_allinuse_iiwidth(ctl);
+        }
 #endif
         max_cols =
             maxx <= SAVED_PINGS + padding ? maxx - padding : SAVED_PINGS;

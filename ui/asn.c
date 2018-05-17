@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #ifdef HAVE_ERROR_H
 #include <error.h>
 #else
@@ -42,10 +43,15 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <search.h>
+#include <ares.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <fcntl.h>
 
 #include "mtr.h"
 #include "asn.h"
 #include "utils.h"
+#include "display.h"
 
 /* #define IIDEBUG */
 #ifdef IIDEBUG
@@ -55,120 +61,59 @@
 #define DEB_syslog(...) do {} while (0)
 #endif
 
-#define IIHASH_HI	128
-#define ITEMSMAX	15
-#define ITEMSEP	'|'
-#define NAMELEN	127
-#define UNKN	"???"
-
-static int iihash = 0;
-static char fmtinfo[32];
-
-/* items width: ASN, Route, Country, Registry, Allocated */
-static const int iiwidth[] = { 7, 19, 4, 8, 11 };       /* item len + space */
+#define IIHASH_HI       128
+#define ITEMSMAX        15
+#define ITEMSEP         '|'
+#define NAMELEN         127
+#define SPECIP_MAX      10
+#define UNKN            "???"
+#define EMPTY           "--"
+#define SEMPATH         "sem"
+#define NETPAS_DOMAIN   "ip.xelerate.ai"
 
 typedef char *items_t[ITEMSMAX + 1];
-static items_t items_a;         /* without hash: items */
-static char txtrec[NAMELEN + 1];        /* without hash: txtrec */
-static items_t *items = &items_a;
+struct comparm {
+    struct mtr_ctl *ctl;
+    char key[NAMELEN];
+};
+
+static ares_channel channel;
+static items_t items_a;
+static int iihash = 0;
+static int bitmask;
+static ares_socket_t socks[ARES_GETSOCK_MAXNUM];
+static char syncstr[20];
+/* items width: ASN, Route, Country, Registry, Allocated, City, Carrier, Geo */
+static const int iiwidth[] = {9, 18, 6, 7, 13, 8, 10, 25};   /* item len + space */
+/* used for checking private ip */
+static int prefix_arr[4] = {8, 12, 16, 16};
+static unsigned int mask_ip_scope[4];
+static unsigned int private_ip_scope[4];
+/* used for specific ip segment in private ip */
+static int spec_prefix_arr[SPECIP_MAX];
+static unsigned int spec_mask_ip_scope[SPECIP_MAX];
+static unsigned int spec_ip_scope[SPECIP_MAX];
+
+#ifdef ENABLE_IPV6
+char ipinfo_domain6[128] = "origin6.asn.cymru.com";
+#endif
+char ipinfo_domain[128] = "origin.asn.cymru.com";
 
 
-static char *ipinfo_lookup(
-    const char *domain)
-{
-    unsigned char answer[PACKETSZ], *pt;
-    char host[128];
-    char *txt;
-    int len, exp, size, txtlen, type;
-
-
-    if (res_init() < 0) {
-        error(0, 0, "@res_init failed");
-        return NULL;
-    }
-
-    memset(answer, 0, PACKETSZ);
-    if ((len = res_query(domain, C_IN, T_TXT, answer, PACKETSZ)) < 0) {
-        if (iihash)
-            DEB_syslog(LOG_INFO, "Malloc-txt: %s", UNKN);
-        return xstrdup(UNKN);
-    }
-
-    pt = answer + sizeof(HEADER);
-
-    if ((exp =
-         dn_expand(answer, answer + len, pt, host, sizeof(host))) < 0) {
-        printf("@dn_expand failed\n");
-        return NULL;
-    }
-
-    pt += exp;
-
-    GETSHORT(type, pt);
-    if (type != T_TXT) {
-        printf("@Broken DNS reply.\n");
-        return NULL;
-    }
-
-    pt += INT16SZ;              /* class */
-
-    if ((exp =
-         dn_expand(answer, answer + len, pt, host, sizeof(host))) < 0) {
-        printf("@second dn_expand failed\n");
-        return NULL;
-    }
-
-    pt += exp;
-    GETSHORT(type, pt);
-    if (type != T_TXT) {
-        printf("@Not a TXT record\n");
-        return NULL;
-    }
-
-    pt += INT16SZ;              /* class */
-    pt += INT32SZ;              /* ttl */
-    GETSHORT(size, pt);
-    txtlen = *pt;
-
-
-    if (txtlen >= size || !txtlen) {
-        printf("@Broken TXT record (txtlen = %d, size = %d)\n", txtlen,
-               size);
-        return NULL;
-    }
-
-    if (txtlen > NAMELEN)
-        txtlen = NAMELEN;
-
-    if (iihash) {
-        txt = xmalloc(txtlen + 1);
-    } else
-        txt = (char *) txtrec;
-
-    pt++;
-    xstrncpy(txt, (char *) pt, txtlen + 1);
-
-    if (iihash)
-        DEB_syslog(LOG_INFO, "Malloc-txt(%p): %s", txt, txt);
-
-    return txt;
-}
-
-/* originX.asn.cymru.com txtrec:    ASN | Route | Country | Registry | Allocated */
 static char *split_txtrec(
     struct mtr_ctl *ctl,
-    char *txt_rec)
+    char *txt_rec,
+    items_t **p_items)
 {
     char *prev;
     char *next;
-    int i = 0, j;
+    int i = 0;
+    items_t *items = &items_a;
 
     if (!txt_rec)
         return NULL;
     if (iihash) {
-        DEB_syslog(LOG_INFO, "Malloc-tbl: %s", txt_rec);
         if (!(items = malloc(sizeof(*items)))) {
-            DEB_syslog(LOG_INFO, "Free-txt(%p)", txt_rec);
             free(txt_rec);
             return NULL;
         }
@@ -187,15 +132,138 @@ static char *split_txtrec(
 
     if (i < ITEMSMAX)
         i++;
-    for (j = i; j <= ITEMSMAX; j++)
-        (*items)[j] = NULL;
+    for (; i <= ITEMSMAX; i++)
+        (*items)[i] = NULL;
 
-    if (i > ctl->ipinfo_max)
-        ctl->ipinfo_max = i;
-    if (ctl->ipinfo_no >= i) {
-        return (*items)[0];
-    } else
-        return (*items)[ctl->ipinfo_no];
+    *p_items = items;
+
+    return (*items)[ctl->ipinfo_no] ? (*items)[ctl->ipinfo_no] : UNKN;
+}
+
+static void query_callback (
+    void* arg,
+    int status,
+    int timeouts,
+    unsigned char *abuf,
+    int aslen)
+{
+    struct ares_txt_reply *txt_out = NULL;
+    struct comparm *parm = (struct comparm *)arg;
+    items_t *items_tmp = NULL;
+    char *retstr = NULL;
+    char *unknown_txt = NULL;
+    ENTRY item;
+    ENTRY *found_item;
+
+    if (ARES_SUCCESS != ares_parse_txt_reply(abuf, aslen, &txt_out)) {
+        ares_free_data(txt_out);
+        unknown_txt = (char *)malloc(strlen(UNKN) + 1);
+        if (unknown_txt == NULL) {
+            return;
+        }
+        strcpy(unknown_txt, UNKN);
+        retstr = split_txtrec(parm->ctl, unknown_txt, &items_tmp);
+    } else {
+        retstr = split_txtrec(parm->ctl, txt_out->txt, &items_tmp);
+    }
+    if (retstr != NULL)
+        strncpy(syncstr, retstr, sizeof(syncstr)-1);
+
+    if (retstr && iihash) {
+        item.key = parm->key;
+        if ((found_item = hsearch(item, FIND))) {
+        	if (found_item->data == NULL) {
+        		found_item->data = (void *) items_tmp;
+        	}
+        }
+    } else if (iihash) {
+        free(items_tmp);
+    }
+
+    /*  cannot free, hash use it!
+    if (txt_out) {
+        ares_free_data(txt_out);
+    }*/
+
+    free(parm);
+}
+
+int ipinfo_waitfd(
+    fd_set *readfd)
+{
+    if (!iihash) {
+        return -1;
+    }
+
+    bitmask = ares_getsock(channel, socks, ARES_GETSOCK_MAXNUM);
+    return ares_fds(channel, readfd, NULL);
+}
+
+void ipinfo_ack(
+    fd_set *readfd)
+{
+    int i;
+    int ready = 0;
+
+    if (!iihash) {
+        return;
+    }
+
+    for (i = 0; i < ARES_GETSOCK_MAXNUM; i++) {
+        if (ARES_GETSOCK_READABLE(bitmask, i)) {
+            if (FD_ISSET(socks[i], readfd)) {
+                ready = 1;
+                break;
+            }
+        }
+    }
+    if (ready == 1) {
+        ares_process(channel, readfd, NULL);
+    }
+}
+
+void wait_ack(
+    void)
+{
+    int nfds;
+    fd_set readers;
+    struct timeval tv, *tvp;
+
+    FD_ZERO(&readers);
+    nfds = ares_fds(channel, &readers, NULL);
+    if (nfds == 0) {
+        return ;
+    }
+
+    tvp = ares_timeout(channel, NULL, &tv);
+    if ((tvp->tv_sec == 0) && (tvp->tv_usec == 0)) {
+        tvp->tv_sec += 3;
+    }
+
+    if (select(nfds, &readers, NULL, NULL, tvp) > 0) {
+        ares_process(channel, &readers, NULL);
+    }
+}
+
+static void ipinfo_lookup(
+    struct mtr_ctl *ctl,
+    const char *domain,
+    struct comparm *parm)
+{
+    if (!iihash) {
+        if(ares_init(&channel) != ARES_SUCCESS) {
+            error(0, 0, "ares_init failed");
+            free(parm);
+            return;
+        }
+        memset(syncstr, 0, sizeof(syncstr));
+    }
+
+    ares_query(channel, domain, C_IN, T_TXT, query_callback, parm);
+
+    if (!iihash) {
+        wait_ack();
+    }
 }
 
 #ifdef ENABLE_IPV6
@@ -215,22 +283,107 @@ static void reverse_host6(
 }
 #endif
 
+void process_ip_prefix(char *ipprefix)
+{
+    char *p = NULL;
+    static int index = 0;
+
+    if (index >= (sizeof(spec_prefix_arr)/sizeof(spec_prefix_arr[0])))
+        return;
+
+    p = strrchr(ipprefix, '/');
+    if (p == NULL) {
+        error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
+    }
+    *p++ = '\0';
+
+    spec_prefix_arr[index] = strtonum_or_err(p, "invalid argument", STRTO_U32INT);
+    if (spec_prefix_arr[index] <= 0 || spec_prefix_arr[index] >= 32) {
+        *(--p) = '/';
+        error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
+    }
+
+    spec_mask_ip_scope[index] = 0xffffffff;
+    spec_mask_ip_scope[index] <<= (32 - spec_prefix_arr[index]);
+    spec_mask_ip_scope[index] &= 0xffffffff;
+
+    spec_ip_scope[index] = inet_addr(ipprefix);
+    if (spec_ip_scope[index] == INADDR_NONE) {
+        *(--p) = '/';
+        error(EXIT_FAILURE, 0, "invalid argument:%s", ipprefix);
+    }
+    spec_ip_scope[index] = htonl(spec_ip_scope[index]);
+    spec_ip_scope[index] &= spec_mask_ip_scope[index];
+
+    index++;
+}
+
+static void init_private_ip(void)
+{
+    int i;
+
+    // general private ip address
+    private_ip_scope[0] = 167772160UL;	// 10.0.0.0/8
+	private_ip_scope[1] = 2886729728UL;	// 172.16.0.0/12
+	private_ip_scope[2] = 3232235520UL;	// 192.168.0.0/16
+	private_ip_scope[3] = 1681915904UL;	// 100.64.0.0/16
+	for (i = 0; i < 4; i++) {
+		mask_ip_scope[i] = 0xffffffff;
+		mask_ip_scope[i] <<= (32 - prefix_arr[i]);
+		mask_ip_scope[i] &= 0xffffffff;
+	}
+}
+
+static int is_private_ip(ip_t *addr)
+{
+	int i;
+	unsigned int ipaddr;
+
+    if (!iihash) {
+        init_private_ip();
+    }
+
+    ipaddr = htonl((*(struct in_addr *)addr).s_addr);
+
+    if (strcmp(ipinfo_domain, NETPAS_DOMAIN) == 0) {
+        i = 0;
+        while (spec_prefix_arr[i] != 0) {
+            if ((ipaddr & spec_mask_ip_scope[i]) == spec_ip_scope[i])
+                return 0;
+            i++;
+        }
+    }
+
+	for (i = 0; i < 4; i++) {
+		if ((ipaddr & mask_ip_scope[i]) == private_ip_scope[i])
+			return 1;
+	}
+
+	return 0;
+}
+
 static char *get_ipinfo(
     struct mtr_ctl *ctl,
-    ip_t * addr)
+    ip_t * addr,
+    int hops)
 {
     char key[NAMELEN];
     char lookup_key[NAMELEN];
     char *val = NULL;
+    struct comparm *parm;
     ENTRY item;
 
     if (!addr)
         return NULL;
 
+    if ((ctl->af == AF_INET) && is_private_ip(addr)) {
+        return NULL;
+    }
+
     if (ctl->af == AF_INET6) {
 #ifdef ENABLE_IPV6
         reverse_host6(addr, key, NAMELEN);
-        if (snprintf(lookup_key, NAMELEN, "%s.origin6.asn.cymru.com", key)
+        if (snprintf(lookup_key, NAMELEN, "%s.%s", key, ipinfo_domain6)
             >= NAMELEN)
             return NULL;
 #else
@@ -243,33 +396,54 @@ static char *get_ipinfo(
             (key, NAMELEN, "%d.%d.%d.%d", buff[3], buff[2], buff[1],
              buff[0]) >= NAMELEN)
             return NULL;
-        if (snprintf(lookup_key, NAMELEN, "%s.origin.asn.cymru.com", key)
-            >= NAMELEN)
-            return NULL;
+        if (strcmp(ipinfo_domain, NETPAS_DOMAIN) == 0) {
+            if (snprintf(lookup_key, NAMELEN, "%d.mtr.%s.%s", hops, key,
+                    ipinfo_domain) >= NAMELEN)
+                return NULL;
+        } else {
+            if (snprintf(lookup_key, NAMELEN, "%s.%s", key, ipinfo_domain)
+                     >= NAMELEN)
+                return NULL;
+        }
     }
 
     if (iihash) {
         ENTRY *found_item;
 
         DEB_syslog(LOG_INFO, ">> Search: %s", key);
-        item.key = key;;
+        item.key = key;
         if ((found_item = hsearch(item, FIND))) {
-            if (!(val = (*((items_t *) found_item->data))[ctl->ipinfo_no]))
-                val = (*((items_t *) found_item->data))[0];
+            if (found_item->data == NULL) {
+                return NULL;
+            }
+
+            if (!(val = (*((items_t *) found_item->data))[ctl->ipinfo_no])) {
+                val = UNKN;
+            }
             DEB_syslog(LOG_INFO, "Found (hashed): %s", val);
         }
     }
 
     if (!val) {
-        DEB_syslog(LOG_INFO, "Lookup: %s", key);
-        if ((val = split_txtrec(ctl, ipinfo_lookup(lookup_key)))) {
-            DEB_syslog(LOG_INFO, "Looked up: %s", key);
-            if (iihash)
-                if ((item.key = xstrdup(key))) {
-                    item.data = (void *) items;
-                    hsearch(item, ENTER);
-                    DEB_syslog(LOG_INFO, "Insert into hash: %s", key);
-                }
+        parm = (struct comparm *)malloc(sizeof(struct comparm));
+        if (parm == NULL) {
+            return NULL;
+        }
+        parm->ctl = ctl;
+        strncpy(parm->key, key, sizeof(parm->key)-1);
+
+        if (iihash) {
+            if ((item.key = xstrdup(key))) {
+                item.data = NULL;
+                hsearch(item, ENTER);
+            } else {
+                return NULL;
+            }
+        }
+
+        ipinfo_lookup(ctl, lookup_key, parm);
+        if (!iihash) {
+            return syncstr;
         }
     }
 
@@ -292,40 +466,124 @@ ATTRIBUTE_CONST int get_iiwidth(
     return iiwidth[ipinfo_no % len];
 }
 
-char *fmt_ipinfo(
-    struct mtr_ctl *ctl,
-    ip_t * addr)
+int get_allinuse_iiwidth(
+    struct mtr_ctl *ctl)
 {
-    char *ipinfo = get_ipinfo(ctl, addr);
-    char fmt[8];
-    snprintf(fmt, sizeof(fmt), "%s%%-%ds", ctl->ipinfo_no ? "" : "AS",
-             get_iiwidth(ctl->ipinfo_no));
-    snprintf(fmtinfo, sizeof(fmtinfo), fmt, ipinfo ? ipinfo : UNKN);
-    return fmtinfo;
+    int i;
+    int width = 0;
+
+    for (i = 0; i < IPINFO_NUMS; i++) {
+        if (IS_INDEX_IPINFO(ctl->ipinfo_arr, i)) {
+            width += get_iiwidth(i);
+        }
+    }
+
+    return width;
 }
 
+static char *fmt_ipinfo(
+    struct mtr_ctl *ctl,
+    ip_t * addr,
+    int hops)
+{
+    char fmt[8];
+    static char fmtinfo[32];
+    char *ipinfo = NULL;
+
+    ipinfo = get_ipinfo(ctl, addr, hops);
+    snprintf(fmt, sizeof(fmt), "%s%%-%ds", ctl->ipinfo_no ? "" : "AS",
+             get_iiwidth(ctl->ipinfo_no));
+
+    if (ipinfo && (strlen(ipinfo) == 0)) {
+        snprintf(fmtinfo, sizeof(fmtinfo), fmt, EMPTY);
+    } else {
+        snprintf(fmtinfo, sizeof(fmtinfo), fmt, ipinfo ? ipinfo : UNKN);
+    }
+
+    return fmtinfo;
+}
+/*
 int is_printii(
     struct mtr_ctl *ctl)
 {
-    return (ctl->ipinfo_no >= 0);
+    return ((ctl->ipinfo_no >= 0) &&
+            (ctl->ipinfo_no < ctl->ipinfo_max));
+}*/
+
+/*
+ * Get the ipinfo individual field information.
+ */
+char *ipinfo_get_content(
+    struct mtr_ctl *ctl,
+    ip_t * addr,
+    int ipinfo_index,
+    int hops)
+{
+    char *content;
+
+    ctl->ipinfo_no = ipinfo_index;
+    content = fmt_ipinfo(ctl, addr, hops);
+
+    if (strlen(content) == 0)
+        content = EMPTY;
+
+    return content;
+}
+
+/*
+ * Gets all Ipinfo information based on the specified format in data_fields[]
+ */
+int get_ipinfo_compose(
+    struct mtr_ctl *ctl, // [in] param
+    ip_t *addr,          // [in] param
+    char *buf,           // [in|output] param
+    int buflen,          // [in] param
+    int hops)
+{
+	int i, j, hd_len;
+	unsigned char key;
+
+    memset(buf, 0, buflen);
+	for (i = 0, hd_len = 0; i < MAXFLD; i++) {
+		j = ctl->fld_index[ctl->fld_active[i]];
+		key = data_fields[j].key;
+
+		if (!is_ipinfo_filed(key))
+		    break;
+		snprintf(buf + hd_len, buflen - hd_len,
+		        data_fields[j].format,
+		        data_fields[j].ipinfo_xxx(ctl, addr, ipinfo_key2no(key), hops));
+
+		hd_len += (data_fields[j].length);
+	}
+	buf[hd_len] = 0;
+
+    return i;
 }
 
 void asn_open(
     struct mtr_ctl *ctl)
 {
-    if (ctl->ipinfo_no >= 0) {
-        DEB_syslog(LOG_INFO, "hcreate(%d)", IIHASH_HI);
-        if (!(iihash = hcreate(IIHASH_HI)))
-            error(0, errno, "ipinfo hash");
+    DEB_syslog(LOG_INFO, "hcreate(%d)", IIHASH_HI);
+    if (!(iihash = hcreate(IIHASH_HI)))
+        error(0, errno, "ipinfo hash");
+
+    init_private_ip();
+
+    if(ares_init(&channel) != ARES_SUCCESS) {
+        error(0, 0, "ares_init failed");
+        return;
     }
 }
 
 void asn_close(
     struct mtr_ctl *ctl)
 {
-    if ((ctl->ipinfo_no >= 0) && iihash) {
+    if (iihash) {
         DEB_syslog(LOG_INFO, "hdestroy()");
         hdestroy();
         iihash = 0;
     }
+
+    ares_destroy(channel);
 }

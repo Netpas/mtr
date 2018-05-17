@@ -96,6 +96,8 @@ void report_close(
     const size_t iiwidth_len = get_iiwidth_len();
 #endif
 
+    // print heads ----
+
     if (ctl->reportwide) {
         /* get the longest hostname */
         len_hosts = strlen(ctl->LocalHostname);
@@ -111,13 +113,11 @@ void report_close(
     }
 #ifdef HAVE_IPINFO
     len_tmp = len_hosts;
-    if (ctl->ipinfo_no >= 0 && iiwidth_len) {
-        ctl->ipinfo_no %= iiwidth_len;
+    if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr) && iiwidth_len) {
         if (ctl->reportwide) {
             len_hosts++;        /* space */
-            len_tmp += get_iiwidth(ctl->ipinfo_no);
-            if (!ctl->ipinfo_no)
-                len_tmp += 2;   /* align header: AS */
+
+            len_tmp += get_allinuse_iiwidth(ctl);
         }
     }
     snprintf(fmt, sizeof(fmt), "HOST: %%-%ds", len_tmp);
@@ -128,7 +128,7 @@ void report_close(
     len = ctl->reportwide ? strlen(buf) : len_hosts;
     for (i = 0; i < MAXFLD; i++) {
         j = ctl->fld_index[ctl->fld_active[i]];
-        if (j < 0)
+        if (j < 0 || is_ipinfo_filed(data_fields[j].key))
             continue;
 
         snprintf(fmt, sizeof(fmt), "%%%ds", data_fields[j].length);
@@ -136,6 +136,8 @@ void report_close(
         len += data_fields[j].length;
     }
     printf("%s\n", buf);
+
+    // print contents
 
     max = net_max(ctl);
     at = net_min(ctl);
@@ -145,10 +147,12 @@ void report_close(
         snprint_addr(ctl, name, sizeof(name), addr);
 
 #ifdef HAVE_IPINFO
-        if (is_printii(ctl)) {
-            snprintf(fmt, sizeof(fmt), " %%2d. %%s%%-%zus", len_hosts);
-            snprintf(buf, sizeof(buf), fmt, at + 1, fmt_ipinfo(ctl, addr),
-                     name);
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+            snprintf(buf, sizeof(buf), " %2d. ", at + 1);
+            get_ipinfo_compose(ctl, addr, buf + strlen(buf),
+                                sizeof(buf) - strlen(buf), at + 1);
+            snprintf(fmt, sizeof(fmt), "%%-%zus", len_hosts);
+            snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), fmt, name);
         } else {
 #endif
             snprintf(fmt, sizeof(fmt), " %%2d.|-- %%-%zus", len_hosts);
@@ -156,10 +160,11 @@ void report_close(
 #ifdef HAVE_IPINFO
         }
 #endif
+
         len = ctl->reportwide ? strlen(buf) : len_hosts;
         for (i = 0; i < MAXFLD; i++) {
             j = ctl->fld_index[ctl->fld_active[i]];
-            if (j < 0)
+            if (j < 0 || is_ipinfo_filed(data_fields[j].key))
                 continue;
 
             /* 1000.0 is a temporay hack for stats usec to ms, impacted net_loss. */
@@ -197,11 +202,11 @@ void report_close(
             if (!found) {
 
 #ifdef HAVE_IPINFO
-                if (is_printii(ctl)) {
+                if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
                     if (mpls->labels && z == 1 && ctl->enablempls)
                         print_mpls(mpls);
                     snprint_addr(ctl, name, sizeof(name), addr2);
-                    printf("     %s%s\n", fmt_ipinfo(ctl, addr2), name);
+                    printf("     %s\n", name);
                     if (ctl->enablempls)
                         print_mpls(mplss);
                 }
@@ -239,7 +244,7 @@ void report_close(
 
         /* No multipath */
 #ifdef HAVE_IPINFO
-        if (is_printii(ctl)) {
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
             if (mpls->labels && z == 1 && ctl->enablempls)
                 print_mpls(mpls);
         }
@@ -282,29 +287,10 @@ void json_close(
     int i, j, at, first, max;
     ip_t *addr;
     char name[MAX_FORMAT_STR];
+    unsigned char key;
+    char *content;
 
     printf("{\n");
-    printf("  \"report\": {\n");
-    printf("    \"mtr\": {\n");
-    printf("      \"src\": \"%s\",\n", ctl->LocalHostname);
-    printf("      \"dst\": \"%s\",\n", ctl->Hostname);
-    printf("      \"tos\": \"0x%X\",\n", ctl->tos);
-    if (ctl->cpacketsize >= 0) {
-        printf("      \"psize\": \"%d\",\n", ctl->cpacketsize);
-    } else {
-        printf("      \"psize\": \"rand(%d-%d)\",\n", MINPACKET,
-               -ctl->cpacketsize);
-    }
-    if (ctl->bitpattern >= 0) {
-        printf("      \"bitpattern\": \"0x%02X\",\n",
-               (unsigned char) (ctl->bitpattern));
-    } else {
-        printf("      \"bitpattern\": \"rand(0x00-FF)\",\n");
-    }
-    printf("      \"tests\": \"%d\"\n", ctl->MaxPing);
-    printf("    },\n");
-
-    printf("    \"hubs\": [");
 
     max = net_max(ctl);
     at = first = net_min(ctl);
@@ -312,30 +298,30 @@ void json_close(
         addr = net_addr(at);
         snprint_addr(ctl, name, sizeof(name), addr);
 
-        if (at == first) {
-            printf("{\n");
-        } else {
-            printf("    {\n");
-        }
-        printf("      \"count\": \"%d\",\n", at + 1);
-        printf("      \"host\": \"%s\",\n", name);
+        printf("  \"%d\": { ", at+1);
+
+        i = 0;
 #ifdef HAVE_IPINFO
-        if(!ctl->ipinfo_no) {
-          char* fmtinfo = fmt_ipinfo(ctl, addr);
-          if (fmtinfo != NULL) fmtinfo = trim(fmtinfo, '\0');
-          printf("      \"ASN\": \"%s\",\n", fmtinfo);
+        for (; i < MAXFLD; i++) {
+            j = ctl->fld_index[ctl->fld_active[i]];
+    		key = data_fields[j].key;
+    		if (!is_ipinfo_filed(key))
+    			break;
+            content = data_fields[j].ipinfo_xxx(ctl, addr, ipinfo_key2no(key), at+1);
+            printf("\"%s\": \"%s\", ", data_fields[j].title, trim(content, ' '));
         }
 #endif
-        for (i = 0; i < MAXFLD; i++) {
+
+        printf("\"HOST\": \"%s\"", name);
+
+        for (; i < MAXFLD; i++) {
             const char *format;
 
             j = ctl->fld_index[ctl->fld_active[i]];
 
             /* Commas */
-            if (i + 1 == MAXFLD) {
-                printf("\n");
-            } else if (j > 0 && i != 0) {
-                printf(",\n");
+            if ((i + 1 != MAXFLD) && j > 0) {
+                printf(", ");
             }
 
             if (j <= 0)
@@ -350,7 +336,7 @@ void json_close(
             }
 
             /* Format json line */
-            snprintf(name, sizeof(name), "%s%s", "      \"%s\": ", format);
+            snprintf(name, sizeof(name), "%s%s", "\"%s\": ", format);
 
             /* Output json line */
             if (strchr(data_fields[j].format, 'f')) {
@@ -363,14 +349,14 @@ void json_close(
                        data_fields[j].title, data_fields[j].net_xxx(at));
             }
         }
+
+
         if (at + 1 == max) {
-            printf("    }");
+            printf("  }\n");
         } else {
-            printf("    },\n");
+            printf("  },\n");
         }
     }
-    printf("]\n");
-    printf("  }\n");
     printf("}\n");
 }
 
@@ -388,6 +374,9 @@ void xml_close(
     int i, j, at, max;
     ip_t *addr;
     char name[MAX_FORMAT_STR];
+    char content_tmp[128];
+    unsigned char key;
+    char *content;
 
     printf("<?xml version=\"1.0\"?>\n");
     printf("<MTR SRC=\"%s\" DST=\"%s\"", ctl->LocalHostname,
@@ -409,19 +398,36 @@ void xml_close(
     max = net_max(ctl);
     at = net_min(ctl);
     for (; at < max; at++) {
-        addr = net_addr(at);
-        snprint_addr(ctl, name, sizeof(name), addr);
+        printf("    <HUB COUNT=\"%d\"> ", at + 1);
 
-        printf("    <HUB COUNT=\"%d\" HOST=\"%s\">\n", at + 1, name);
-        for (i = 0; i < MAXFLD; i++) {
+        addr = net_addr(at);
+        i = 0;
+#ifdef HAVE_IPINFO
+        for (; i < MAXFLD; i++) {
+            j = ctl->fld_index[ctl->fld_active[i]];
+            key = data_fields[j].key;
+            if (!is_ipinfo_filed(key))
+                break;
+            snprintf(name, sizeof(name), "%s%%s%s", "<%s>", "</%s> ");
+            content = data_fields[j].ipinfo_xxx(ctl, addr, ipinfo_key2no(key), at+1);
+            snprintf(content_tmp, sizeof(content_tmp), data_fields[j].format,
+                    content);
+            printf(name, data_fields[j].title, trim(content_tmp, ' '),
+                    data_fields[j].title);
+        }
+#endif
+
+        snprint_addr(ctl, name, sizeof(name), addr);
+        printf("<HOST>%s</HOST> ", name);
+
+        for (; i < MAXFLD; i++) {
             const char *title;
 
             j = ctl->fld_index[ctl->fld_active[i]];
             if (j <= 0)
                 continue;       /* Field nr 0, " " shouldn't be printed in this method. */
 
-            snprintf(name, sizeof(name), "%s%s%s", "        <%s>",
-                     data_fields[j].format, "</%s>\n");
+            snprintf(name, sizeof(name), "%s%%s%s", "<%s>", "</%s> ");
 
             /* XML doesn't allow "%" in tag names, rename Loss% to just Loss */
             title = data_fields[j].title;
@@ -431,13 +437,15 @@ void xml_close(
 
             /* 1000.0 is a temporay hack for stats usec to ms, impacted net_loss. */
             if (strchr(data_fields[j].format, 'f')) {
-                printf(name,
-                       title, data_fields[j].net_xxx(at) / 1000.0, title);
+                snprintf(content_tmp, sizeof(content_tmp), data_fields[j].format,
+                        data_fields[j].net_xxx(at) / 1000.0);
             } else {
-                printf(name, title, data_fields[j].net_xxx(at), title);
+                snprintf(content_tmp, sizeof(content_tmp), data_fields[j].format,
+                        data_fields[j].net_xxx(at));
             }
+            printf(name, title, trim(content_tmp, ' '), title);
         }
-        printf("    </HUB>\n");
+        printf("</HUB>\n");
     }
     printf("</MTR>\n");
 }
@@ -453,8 +461,10 @@ void csv_close(
     time_t now)
 {
     int i, j, at, max;
-    ip_t *addr;
     char name[MAX_FORMAT_STR];
+    unsigned char key;
+    char *content;
+    ip_t *addr;
 
     for (i = 0; i < MAXFLD; i++) {
         j = ctl->fld_index[ctl->fld_active[i]];
@@ -468,34 +478,48 @@ void csv_close(
         addr = net_addr(at);
         snprint_addr(ctl, name, sizeof(name), addr);
 
+        i = 0;
         if (at == net_min(ctl)) {
-            printf("Mtr_Version,Start_Time,Status,Host,Hop,Ip,");
+            printf("Mtr_Version,Start_Time,Status,Host,Hop");
 #ifdef HAVE_IPINFO
-            if (!ctl->ipinfo_no) {
-                printf("Asn,");
+            for (; i < MAXFLD; i++) {
+                j = ctl->fld_index[ctl->fld_active[i]];
+                if (!is_ipinfo_filed(data_fields[j].key))
+        		    break;
+                printf(",%s", data_fields[j].title);
             }
 #endif
-            for (i = 0; i < MAXFLD; i++) {
+            printf(",HOST");
+            for (; i < MAXFLD; i++) {
                 j = ctl->fld_index[ctl->fld_active[i]];
                 if (j < 0)
                     continue;
-                printf("%s,", data_fields[j].title);
+                printf(",%s", data_fields[j].title);
             }
             printf("\n");
         }
+
+        i = 0;
 #ifdef HAVE_IPINFO
-        if (!ctl->ipinfo_no) {
-            char *fmtinfo = fmt_ipinfo(ctl, addr);
-            fmtinfo = trim(fmtinfo, '\0');
-            printf("MTR.%s,%lld,%s,%s,%d,%s,%s", PACKAGE_VERSION,
-                   (long long) now, "OK", ctl->Hostname, at + 1, name,
-                   fmtinfo);
+        if (!IS_CLEAR_IPINFO(ctl->ipinfo_arr)) {
+            printf("MTR.%s,%lld,%s,%s,%d", PACKAGE_VERSION,
+                   (long long) now, "OK", ctl->Hostname, at + 1);
+            for (; i < MAXFLD; i++) {
+                j = ctl->fld_index[ctl->fld_active[i]];
+                key = data_fields[j].key;
+                if (!is_ipinfo_filed(key))
+        		    break;
+                content = data_fields[j].ipinfo_xxx(ctl, addr, ipinfo_key2no(key), at+1);
+                printf(",%s", trim(content, ' '));
+            }
         } else
 #endif
-            printf("MTR.%s,%lld,%s,%s,%d,%s", PACKAGE_VERSION,
-                   (long long) now, "OK", ctl->Hostname, at + 1, name);
+            printf("MTR.%s,%lld,%s,%s,%d", PACKAGE_VERSION,
+                   (long long) now, "OK", ctl->Hostname, at + 1);
 
-        for (i = 0; i < MAXFLD; i++) {
+        printf(",%s", name);
+
+        for (; i < MAXFLD; i++) {
             j = ctl->fld_index[ctl->fld_active[i]];
             if (j < 0)
                 continue;
