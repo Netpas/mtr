@@ -54,7 +54,9 @@ void (
 
 int open_command_pipe(
     struct mtr_ctl *ctl,
-    struct packet_command_pipe_t *cmdpipe);
+    struct packet_command_pipe_t *cmdpipe,
+    const char *localaddr,
+    const char *af);
 
 void close_command_pipe(
     struct packet_command_pipe_t *cmdpipe);
