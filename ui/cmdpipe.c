@@ -211,9 +211,11 @@ extern char *myname;
 */
 static
 void execute_packet_child(
-    void)
+    const char *localaddr,
+    const char *af)
 {
     char buf[256];
+
     /*
        Allow the MTR_PACKET environment variable to override
        the path to the mtr-packet executable.  This is necessary
@@ -228,20 +230,20 @@ void execute_packet_child(
        First, try to execute mtr-packet from PATH
        or MTR_PACKET environment variable.
      */
-    execlp(mtr_packet_path, "mtr-packet", (char *) NULL);
+    execlp(mtr_packet_path, "mtr-packet", localaddr, af, (char *) NULL);
 
-    /* 
-       Then try to find it where WE were executed from.  
+    /*
+       Then try to find it where WE were executed from.
      */
     strncpy (buf, myname, 240);
     strcat (buf, "-packet");
     mtr_packet_path = buf;
-    execl(mtr_packet_path, "mtr-packet", (char *) NULL);
+    execl(mtr_packet_path, "mtr-packet", localaddr, af, (char *) NULL);
 
     /*
        If mtr-packet is not found, try to use mtr-packet from current directory
      */
-    execl("./mtr-packet", "./mtr-packet", (char *) NULL);
+    execl("./mtr-packet", "./mtr-packet", localaddr, af, (char *) NULL);
 
     /*  Both exec attempts failed, so nothing to do but exit  */
     exit(1);
@@ -251,7 +253,9 @@ void execute_packet_child(
 /*  Create the command pipe to a new mtr-packet subprocess  */
 int open_command_pipe(
     struct mtr_ctl *ctl,
-    struct packet_command_pipe_t *cmdpipe)
+    struct packet_command_pipe_t *cmdpipe,
+    const char *localaddr,
+    const char *af)
 {
     int stdin_pipe[2];
     int stdout_pipe[2];
@@ -284,7 +288,7 @@ int open_command_pipe(
             close(i);
         }
 
-        execute_packet_child();
+        execute_packet_child(localaddr, af);
     } else {
         memset(cmdpipe, 0, sizeof(struct packet_command_pipe_t));
 

@@ -23,12 +23,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #ifdef HAVE_LIBCAP
 #include <sys/capability.h>
 #endif
 
 #include "wait.h"
+
+#define BIND(socket, addr, len)   \
+do {\
+    if ((socket > 0) && (bind(socket, addr, len) < 0)) {  \
+        return -1; \
+    }\
+} while(0)
+
 
 /*  Drop SUID privileges.  To be used after accquiring raw sockets.  */
 static
@@ -68,6 +79,46 @@ int drop_elevated_permissions(
     return 0;
 }
 
+static int init_bind(struct net_state_t *net_state, char *localaddr, char *af)
+{
+#ifdef ENABLE_IPV6
+    struct sockaddr_storage sourcesockaddr_struct;
+    struct sockaddr_in6 *ssa6 = (struct sockaddr_in6 *)&sourcesockaddr_struct;
+#else
+    struct sockaddr_in sourcesockaddr_struct;
+#endif
+    struct sockaddr *sourcesockaddr = (struct sockaddr *)&sourcesockaddr_struct;
+    struct sockaddr_in *ssa4 = (struct sockaddr_in *)&sourcesockaddr_struct;
+    int len;
+
+    if (strcmp(af, "6") == 0) {     // AF_INET6
+        sourcesockaddr->sa_family = AF_INET6;
+        ssa6->sin6_port = 0;
+        if (inet_pton(AF_INET6, localaddr, &(ssa6->sin6_addr)) < 1) {
+            return -1;
+        }
+        len = sizeof(struct sockaddr_in6);
+
+        BIND(net_state->platform.icmp6_send_socket, sourcesockaddr, len);
+        BIND(net_state->platform.ip6_txrx_icmp_socket, sourcesockaddr, len);
+        BIND(net_state->platform.udp6_send_socket, sourcesockaddr, len);
+        BIND(net_state->platform.ip6_txrx_udp_socket, sourcesockaddr, len);
+    } else {    // AF_INET
+        sourcesockaddr->sa_family = AF_INET;
+        ssa4->sin_port = 0;
+        if (inet_aton(localaddr, &(ssa4->sin_addr)) < 1) {
+            return -1;
+        }
+        len = sizeof(struct sockaddr);
+
+        BIND(net_state->platform.ip4_send_socket, sourcesockaddr, len);
+        BIND(net_state->platform.ip4_txrx_icmp_socket, sourcesockaddr, len);
+        BIND(net_state->platform.ip4_txrx_udp_socket, sourcesockaddr, len);
+    }
+
+    return 0;
+}
+
 int main(
     int argc,
     char **argv)
@@ -76,8 +127,13 @@ int main(
     struct command_buffer_t command_buffer;
     struct net_state_t net_state;
 
+    // argv[1]:localaddr argv[2]:af
+    if (argc != 3) {
+        exit(EXIT_FAILURE);
+    }
+
     /*
-       To minimize security risk, the only thing done prior to 
+       To minimize security risk, the only thing done prior to
        dropping SUID should be opening the network state for
        raw sockets.
      */
@@ -87,6 +143,10 @@ int main(
         exit(EXIT_FAILURE);
     }
     init_net_state(&net_state);
+    if (init_bind(&net_state, argv[1], argv[2]) < 0) {
+        perror("failed to bind to interface:");
+        exit(EXIT_FAILURE);
+    }
 
     init_command_buffer(&command_buffer, fileno(stdin));
 
